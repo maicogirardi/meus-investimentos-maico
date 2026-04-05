@@ -2,34 +2,40 @@ import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-const defaultFirebaseConfig = {
-  apiKey: "AIzaSyAirXYYM6Cds5XfVv5h9vqNruw18r0d66E",
-  authDomain: "meus-investimentos-maico.firebaseapp.com",
-  projectId: "meus-investimentos-maico",
-  storageBucket: "meus-investimentos-maico.firebasestorage.app",
-  messagingSenderId: "137709460544",
-  appId: "1:137709460544:web:34157b78d38b448be693a5",
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultFirebaseConfig.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultFirebaseConfig.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultFirebaseConfig.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultFirebaseConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseConfig.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || defaultFirebaseConfig.appId,
-};
+const requiredFirebaseEnvKeys = Object.freeze([
+  "VITE_FIREBASE_API_KEY",
+  "VITE_FIREBASE_AUTH_DOMAIN",
+  "VITE_FIREBASE_PROJECT_ID",
+  "VITE_FIREBASE_STORAGE_BUCKET",
+  "VITE_FIREBASE_MESSAGING_SENDER_ID",
+  "VITE_FIREBASE_APP_ID",
+]);
 
 let firebaseApp = null;
 let firebaseAuth = null;
 let firebaseDb = null;
 
-function hasRequiredConfig() {
-  return Object.values(firebaseConfig).every(Boolean);
+function getMissingFirebaseEnvKeys() {
+  return requiredFirebaseEnvKeys.filter((key) => {
+    const value = import.meta.env[key];
+    return typeof value !== "string" || value.trim().length === 0;
+  });
 }
 
 export function initializeFirebaseApp() {
-  if (!hasRequiredConfig()) {
+  const missingKeys = getMissingFirebaseEnvKeys();
+
+  if (missingKeys.length > 0) {
+    console.warn(`Firebase não inicializado: variáveis ausentes (${missingKeys.join(", ")}).`);
     return null;
   }
 

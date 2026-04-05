@@ -21,7 +21,7 @@ Cor principal aplicada em:
 
 Preferências persistidas em:
 
-* `userPreferences/{uid}`
+* `users/{uid}/configs/preferences`
 
 Campos atuais:
 

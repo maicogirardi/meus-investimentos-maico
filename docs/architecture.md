@@ -24,10 +24,10 @@ Estrutura inicial criada com:
 
 * login com Google via Firebase Auth
 * página de configurações como primeira tela autenticada
-* preferências de tema (`darkMode` e `themeColor`) persistidas em Firestore na coleção `userPreferences`
+* preferências de tema (`darkMode` e `themeColor`) persistidas em Firestore no caminho `users/{uid}/configs/preferences`
 * sincronização realtime das preferências por `onSnapshot`
 * logout pelo card de conta
-* inicialização com variáveis `VITE_FIREBASE_*` quando presentes, com fallback para a configuração pública do projeto
+* inicialização somente com variáveis `VITE_FIREBASE_*`, sem fallback hardcoded
 * mesma base de tipografia, espaçamento, glass surfaces, botões, navegação inferior e popup de atualização usada no `financas-app`
 * identidade visual ajustada para fundo azul-marinho no lugar do preto dominante do projeto de finanças
 * telas que tenham equivalente no `financas-app` devem ser reproduzidas literalmente antes de qualquer customização adicional
@@ -44,6 +44,6 @@ Estrutura inicial criada com:
 
 ## Observações
 
-* a modelagem final das coleções ainda será refinada quando definirmos as telas e regras de negócio
+* a modelagem final das coleções deve permanecer centrada em `users/{uid}/...`
 * antes de criar novos fluxos, devemos procurar no `financas-app` componentes, estilos e interações equivalentes para reaproveitar o padrão
 * para páginas equivalentes, o padrão é copiar layout, textos, espaçamentos e hierarquia visual do `financas-app`, alterando apenas conteúdo específico de investimentos e o tema de fundo

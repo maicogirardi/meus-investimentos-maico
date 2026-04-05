@@ -75,6 +75,10 @@ function syncBrowserThemeColor(activeTheme) {
   themeColorMeta.setAttribute("content", activeTheme === "dark" ? "#08111f" : "#f3f7ff");
 }
 
+function userConfigDoc(uid) {
+  return doc(db, "users", uid, "configs", "preferences");
+}
+
 function applyTheme() {
   const activeTheme = theme.value;
   const accent = currentColor.value;
@@ -97,7 +101,7 @@ async function savePreferences(patch) {
 
   try {
     await setDoc(
-      doc(db, "userPreferences", currentUser.value.uid),
+      userConfigDoc(currentUser.value.uid),
       {
         uid: currentUser.value.uid,
         darkMode: nextPreferences.darkMode,
@@ -117,7 +121,7 @@ function listenPreferences(uid) {
   }
 
   unsubscribePreferences?.();
-  unsubscribePreferences = onSnapshot(doc(db, "userPreferences", uid), async (snapshot) => {
+  unsubscribePreferences = onSnapshot(userConfigDoc(uid), async (snapshot) => {
     if (!snapshot.exists()) {
       await savePreferences(userPreferences.value);
       return;

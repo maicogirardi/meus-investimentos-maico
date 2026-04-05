@@ -23,10 +23,10 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 
 * login com Google para acesso privado
 * primeira interação autenticada em tela de Configurações
-* preferências iniciais (`darkMode` e `themeColor`) salvas em `userPreferences`
+* preferências iniciais (`darkMode` e `themeColor`) salvas em `users/{uid}/configs/preferences`
 * listener realtime para atualizar tema em tempo real
 * ação de logout no card de conta
-* inicialização do Firebase com prioridade para `.env` e fallback para a configuração pública do projeto
+* inicialização do Firebase exclusivamente por variáveis `VITE_FIREBASE_*` em `.env`
 * base visual alinhada ao `financas-app`, com mesmo sistema de tema, navegação inferior e banner de atualização do PWA
 * páginas equivalentes devem copiar literalmente a estrutura visual do `financas-app`, mudando apenas o necessário para o domínio de investimentos e para a paleta azul-marinho
 
@@ -48,7 +48,7 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 ## Configuração local
 
 1. O `.env` local já foi preenchido neste workspace com o app web criado no Firebase
-2. Em novos ambientes, copie `.env.example` para `.env` e preencha as chaves se quiser sobrescrever a configuração padrão do projeto
+2. Em novos ambientes, copie `.env.example` para `.env` e preencha todas as chaves obrigatórias do app web no Firebase
 3. Instale dependências com `npm install`
 4. Rode `npm run dev`
 
