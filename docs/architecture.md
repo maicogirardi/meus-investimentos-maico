@@ -6,7 +6,7 @@ Estrutura inicial criada com:
 
 * `src/App.vue` como shell visual do projeto
 * `src/config/appConfig.js` para metadados e checkpoints iniciais
-* `src/services/firebase.js` para bootstrap condicional do Firebase
+* `src/services/firebase.js` para bootstrap do Firebase
 * `public/manifest.webmanifest` e `public/sw.js` para base PWA
 * `scripts/build-firebase.ps1` e `scripts/deploy-firebase.ps1` seguindo o mesmo conceito do `financas-app`
 
@@ -25,6 +25,7 @@ Estrutura inicial criada com:
 * preferências de tema (`darkMode` e `themeColor`) persistidas em Firestore na coleção `userPreferences`
 * sincronização realtime das preferências por `onSnapshot`
 * logout pelo card de conta
+* inicialização com variáveis `VITE_FIREBASE_*` quando presentes, com fallback para a configuração pública do projeto
 
 ## Módulos previstos
 

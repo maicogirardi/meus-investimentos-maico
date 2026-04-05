@@ -26,6 +26,7 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 * preferências iniciais (`darkMode` e `themeColor`) salvas em `userPreferences`
 * listener realtime para atualizar tema em tempo real
 * ação de logout no card de conta
+* inicialização do Firebase com prioridade para `.env` e fallback para a configuração pública do projeto
 
 ## Scripts
 
@@ -45,7 +46,7 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 ## Configuração local
 
 1. O `.env` local já foi preenchido neste workspace com o app web criado no Firebase
-2. Em novos ambientes, copie `.env.example` para `.env` e preencha as chaves
+2. Em novos ambientes, copie `.env.example` para `.env` e preencha as chaves se quiser sobrescrever a configuração padrão do projeto
 3. Instale dependências com `npm install`
 4. Rode `npm run dev`
 
