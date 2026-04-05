@@ -382,6 +382,8 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 10px;
   padding: 12px 16px;
+  position: relative;
+  overflow: hidden;
   border: 1px solid transparent;
   border-radius: 16px;
   background: var(--button-bg);
@@ -389,17 +391,46 @@ onBeforeUnmount(() => {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
   box-shadow: var(--button-shadow);
   transition:
     transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
     box-shadow 0.18s ease,
-    filter 0.18s ease;
+    filter 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .primary-button:hover {
   transform: translateY(-1px);
+  border-color: var(--theme-button-hover-border);
+  background: var(--button-hover);
+  color: var(--button-text);
   box-shadow: var(--button-shadow-hover);
   filter: saturate(1.06);
+}
+
+.primary-button:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    var(--button-shadow-hover);
+}
+
+.primary-button:active:not(:disabled) {
+  transform: translateY(0);
+  border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    var(--button-shadow);
+  filter: saturate(1.02);
 }
 
 .button-icon {

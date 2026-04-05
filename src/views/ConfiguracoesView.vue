@@ -245,6 +245,13 @@ function handleThemeToggle(event) {
   border-radius: 999px;
 }
 
+.color-picker:focus-visible {
+  border-color: var(--input-focus-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 4px var(--input-focus-ring);
+}
+
 .color-code-input {
   flex: 1;
   min-width: 0;
@@ -256,6 +263,11 @@ function handleThemeToggle(event) {
   font: inherit;
 }
 
+.color-code-input:focus-visible {
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
 .settings-actions {
   display: flex;
   justify-content: flex-start;
@@ -263,6 +275,8 @@ function handleThemeToggle(event) {
 
 .settings-actions button {
   padding: 10px 14px;
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--theme-button-border);
   border-radius: 16px;
   background:
@@ -272,6 +286,10 @@ function handleThemeToggle(event) {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
     transform 0.18s ease,
@@ -288,6 +306,21 @@ function handleThemeToggle(event) {
     linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
     var(--theme-button-hover-bg);
   color: var(--text-h);
+}
+
+.settings-actions button:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.settings-actions button:active:not(:disabled) {
+  transform: translateY(0);
+  border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .settings-actions button:disabled {
@@ -311,6 +344,14 @@ function handleThemeToggle(event) {
     var(--danger-hover);
   border-color: var(--danger-border-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.settings-actions .logout-button:focus-visible,
+.settings-actions .logout-button:active:not(:disabled) {
+  border-color: var(--danger-border-strong);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .switch {
@@ -356,5 +397,10 @@ function handleThemeToggle(event) {
 .switch input:checked + .switch-track + .switch-thumb {
   transform: translateX(22px);
   background: var(--color-text-on-primary, #ffffff);
+}
+
+.switch input:focus-visible + .switch-track {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 4px var(--input-focus-ring);
 }
 </style>
