@@ -27,6 +27,8 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 * listener realtime para atualizar tema em tempo real
 * ação de logout no card de conta
 * inicialização do Firebase com prioridade para `.env` e fallback para a configuração pública do projeto
+* base visual alinhada ao `financas-app`, com mesmo sistema de tema, navegação inferior e banner de atualização do PWA
+* páginas equivalentes devem copiar literalmente a estrutura visual do `financas-app`, mudando apenas o necessário para o domínio de investimentos e para a paleta azul-marinho
 
 ## Scripts
 
@@ -71,3 +73,4 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 * [docs/firebase.md](./docs/firebase.md)
 * [docs/publishing.md](./docs/publishing.md)
 * [docs/roadmap.md](./docs/roadmap.md)
+* [docs/theme.md](./docs/theme.md)

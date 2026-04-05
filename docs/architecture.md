@@ -5,9 +5,11 @@
 Estrutura inicial criada com:
 
 * `src/App.vue` como shell visual do projeto
+* `src/views/ConfiguracoesView.vue` e `src/components/navigation/BottomTabs.vue` espelhando a estrutura-base do `financas-app`
 * `src/config/appConfig.js` para metadados e checkpoints iniciais
 * `src/services/firebase.js` para bootstrap do Firebase
-* `public/manifest.webmanifest` e `public/sw.js` para base PWA
+* `src/styles/variables.css`, `src/styles/theme.css` e `src/style.css` para o sistema visual compartilhado entre apps
+* `public/manifest.webmanifest` e `public/sw.js` para base PWA com banner de atualização
 * `scripts/build-firebase.ps1` e `scripts/deploy-firebase.ps1` seguindo o mesmo conceito do `financas-app`
 
 ## Direção arquitetural
@@ -26,6 +28,9 @@ Estrutura inicial criada com:
 * sincronização realtime das preferências por `onSnapshot`
 * logout pelo card de conta
 * inicialização com variáveis `VITE_FIREBASE_*` quando presentes, com fallback para a configuração pública do projeto
+* mesma base de tipografia, espaçamento, glass surfaces, botões, navegação inferior e popup de atualização usada no `financas-app`
+* identidade visual ajustada para fundo azul-marinho no lugar do preto dominante do projeto de finanças
+* telas que tenham equivalente no `financas-app` devem ser reproduzidas literalmente antes de qualquer customização adicional
 
 ## Módulos previstos
 
@@ -40,4 +45,5 @@ Estrutura inicial criada com:
 ## Observações
 
 * a modelagem final das coleções ainda será refinada quando definirmos as telas e regras de negócio
-* a tela inicial foi evoluída para refletir o padrão visual de configurações do app de finanças
+* antes de criar novos fluxos, devemos procurar no `financas-app` componentes, estilos e interações equivalentes para reaproveitar o padrão
+* para páginas equivalentes, o padrão é copiar layout, textos, espaçamentos e hierarquia visual do `financas-app`, alterando apenas conteúdo específico de investimentos e o tema de fundo
