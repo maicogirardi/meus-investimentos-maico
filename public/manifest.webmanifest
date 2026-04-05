@@ -1,0 +1,21 @@
+{
+  "name": "Meus Investimentos",
+  "short_name": "Investimentos",
+  "description": "App pessoal para acompanhamento de patrimonio, ativos, metas e alocacao.",
+  "lang": "pt-BR",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1b2a",
+  "theme_color": "#0d1b2a",
+  "icons": [
+    {
+      "src": "logo-invest.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
