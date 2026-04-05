@@ -16,6 +16,7 @@ Use este app como plataforma pessoal de investimentos com foco em:
 - usar Vue 3 + Vite como stack principal
 - usar Firebase Auth para acesso privado
 - usar Firestore como banco principal
+- usar o banco Firestore default em `southamerica-east1`
 - usar listeners realtime sempre que fizer sentido no fluxo principal
 - não usar localStorage como fonte primária de dados
 - GitHub Pages continua como ambiente secundário de desenvolvimento
@@ -56,3 +57,7 @@ Quando o usuário pedir para publicar, o fluxo padrão deve ser:
 Host principal confirmado:
 
 - https://meus-investimentos-maico.web.app
+
+GitHub Pages previsto:
+
+- https://maicogirardi.github.io/meus-investimentos-maico/

@@ -8,7 +8,7 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 * Vite
 * Firebase Auth
 * Firestore realtime
-* GitHub Pages para build de desenvolvimento
+* GitHub Pages com GitHub Actions
 * Firebase Hosting para testes reais de auth e PWA
 
 ## Direção atual
@@ -40,6 +40,19 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 2. Em novos ambientes, copie `.env.example` para `.env` e preencha as chaves
 3. Instale dependências com `npm install`
 4. Rode `npm run dev`
+
+## Firebase atual
+
+* projeto criado: `meus-investimentos-maico`
+* app web criado: `investimentos-web`
+* Firestore criado em `southamerica-east1`
+* regras e índices do Firestore versionados no repositório
+
+## GitHub Pages
+
+* workflow criado em `.github/workflows/deploy-pages.yml`
+* a publicação acontece automaticamente a cada push no branch `main`
+* o repositório precisa usar `Settings > Pages > Source: GitHub Actions`
 
 ## Documentação
 

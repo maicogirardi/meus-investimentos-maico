@@ -5,6 +5,8 @@
 * criar estrutura blank do projeto
 * documentar premissas iniciais
 * alinhar stack com o app de finanças
+* criar GitHub Pages workflow
+* criar projeto Firebase, app web e Firestore
 
 ## Fase 1
 
