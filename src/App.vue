@@ -415,15 +415,43 @@ onBeforeUnmount(() => {
   stroke-linejoin: round;
 }
 
-@media (max-width: 1024px) {
+@media (min-width: 481px) and (max-width: 1023px) {
+  .app-page {
+    padding-inline: 18px;
+  }
+
+  .page-section,
+  .status-card,
+  .hero-card {
+    padding: 16px;
+  }
+
   .management-page-section {
-    width: min(100%, 640px);
+    width: min(100%, 560px);
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 480px) {
   .app-page {
-    padding: 18px 14px 112px;
+    gap: 14px;
+    padding: 14px 12px 118px;
+  }
+
+  .tittle {
+    font-size: clamp(2rem, 10vw, 2.6rem);
+    line-height: 1.02;
+    margin-bottom: 6px;
+  }
+
+  .page-section,
+  .status-card,
+  .hero-card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .management-page-section {
+    width: 100%;
   }
 
   .update-banner {
