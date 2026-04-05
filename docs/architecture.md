@@ -18,6 +18,14 @@ Estrutura inicial criada com:
 * listeners realtime para dados vivos
 * deploy duplo: GitHub Pages para desenvolvimento e Firebase Hosting para ambiente principal
 
+## Fluxo inicial implementado
+
+* login com Google via Firebase Auth
+* página de configurações como primeira tela autenticada
+* preferências de tema (`darkMode` e `themeColor`) persistidas em Firestore na coleção `userPreferences`
+* sincronização realtime das preferências por `onSnapshot`
+* logout pelo card de conta
+
 ## Módulos previstos
 
 * `src/modules/dashboard`
@@ -31,5 +39,4 @@ Estrutura inicial criada com:
 ## Observações
 
 * a modelagem final das coleções ainda será refinada quando definirmos as telas e regras de negócio
-* o projeto começou blank de propósito para evoluir a interface com base nas referências visuais do usuário
-
+* a tela inicial foi evoluída para refletir o padrão visual de configurações do app de finanças

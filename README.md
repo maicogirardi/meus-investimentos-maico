@@ -19,6 +19,14 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase como base para
 * PWA preparado para uso no celular
 * documentação viva em `docs/`
 
+## Fluxo inicial implementado
+
+* login com Google para acesso privado
+* primeira interação autenticada em tela de Configurações
+* preferências iniciais (`darkMode` e `themeColor`) salvas em `userPreferences`
+* listener realtime para atualizar tema em tempo real
+* ação de logout no card de conta
+
 ## Scripts
 
 * `npm run dev`

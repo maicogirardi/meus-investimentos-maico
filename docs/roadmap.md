@@ -13,6 +13,8 @@
 * definir IA e wireframes com base nas telas de referência
 * desenhar modelo de dados inicial
 * criar navegação principal e shell do dashboard
+* implementar primeiro fluxo de autenticação Google com entrada para a página de configurações
+* salvar preferências iniciais (`darkMode` e `themeColor`) em `userPreferences`
 
 ## Fase 2
 
