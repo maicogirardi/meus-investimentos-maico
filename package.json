@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist",
-    "build:firebase": "powershell -ExecutionPolicy Bypass -File scripts/build-firebase.ps1",
+    "build:firebase": "vite build --mode firebase",
     "deploy:firebase": "powershell -ExecutionPolicy Bypass -File scripts/deploy-firebase.ps1"
   },
   "dependencies": {
@@ -22,4 +22,3 @@
     "vite": "^8.0.1"
   }
 }
-

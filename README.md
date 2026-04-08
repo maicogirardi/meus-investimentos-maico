@@ -49,6 +49,12 @@ As definicoes detalhadas ficam em `docs/product.md`, `docs/business_rules.md` e 
 * `npm run build:firebase`
 * `npm run deploy:firebase`
 
+## Bases de build
+
+* `npm run build` gera a build do GitHub Pages com base `/meus-investimentos-maico/`
+* `npm run build:firebase` gera a build do Firebase Hosting com base `/`
+* `npm run deploy:firebase` usa essa build do Firebase antes de publicar
+
 ## Ambientes
 
 * repositorio GitHub planejado: `meus-investimentos-maico`

@@ -1,40 +1,139 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
-import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import BottomTabs from "./components/navigation/BottomTabs.vue";
+import AppSelect from "./components/ui/AppSelect.vue";
 import { appMeta } from "./config/appConfig";
 import AppLayout from "./layout/AppLayout.vue";
+import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
+import AtivosView from "./views/AtivosView.vue";
 import ConfiguracoesView from "./views/ConfiguracoesView.vue";
+import HomeView from "./views/HomeView.vue";
+import ResumoView from "./views/ResumoView.vue";
 
 const auth = getFirebaseAuth();
 const db = getFirebaseDb();
 const provider = new GoogleAuthProvider();
+const today = new Date();
+const defaultPeriod = Object.freeze({
+	year: 2026,
+	month: 4,
+	label: "Abril de 2026",
+});
 
 const status = ref("idle");
 const errorMessage = ref("");
 const currentUser = ref(null);
 const authReady = ref(false);
 const isUpdateAvailable = ref(false);
-const currentPage = ref("settings");
+const currentPage = ref("home");
 const userPreferences = ref({ darkMode: true, themeColor: "#4f7cff" });
+const hasLoadedUiPreferences = ref(false);
+const hasLoadedPeriods = ref(false);
+const preferredPeriod = ref({ year: null, month: null });
+const selectedYear = ref(null);
+const selectedMonth = ref(null);
+const periods = ref([]);
+const isPeriodModalOpen = ref(false);
+const periodModalYear = ref(today.getFullYear());
+const periodModalMonth = ref(today.getMonth() + 1);
 
 let unsubscribeAuth = null;
 let unsubscribePreferences = null;
+let unsubscribePeriods = null;
 let triggerAppUpdate = null;
+let isCreatingDefaultPeriod = false;
+
+const monthOptions = Object.freeze([
+  { value: 1, label: "Janeiro" },
+  { value: 2, label: "Fevereiro" },
+  { value: 3, label: "Marco" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Maio" },
+  { value: 6, label: "Junho" },
+  { value: 7, label: "Julho" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Setembro" },
+  { value: 10, label: "Outubro" },
+  { value: 11, label: "Novembro" },
+  { value: 12, label: "Dezembro" },
+]);
+
+const modalYearOptions = computed(() => {
+  const currentYear = today.getFullYear();
+  return [currentYear - 1, currentYear, currentYear + 1, currentYear + 2, currentYear + 3].map((year) => ({
+    value: year,
+    label: String(year),
+  }));
+});
 
 const isAuthenticated = computed(() => Boolean(currentUser.value));
+const isSubmitting = computed(() => status.value === "loading");
 const theme = computed(() => (userPreferences.value.darkMode !== false ? "dark" : "light"));
 const currentColor = computed(() => userPreferences.value.themeColor || "#4f7cff");
-const isHomePage = computed(() => currentPage.value === "home");
+const selectedPeriodId = computed(() => {
+  if (!Number.isInteger(selectedYear.value) || !Number.isInteger(selectedMonth.value)) {
+    return "";
+  }
 
-const navigationTabs = [
-  { value: "home", label: "Home", icon: "home" },
-  { value: "wallets", label: "Carteiras", icon: "wallet" },
-  { value: "modules", label: "Módulos", icon: "grid" },
-  { value: "settings", label: "Configurações", icon: "settings" },
-];
+  return buildPeriodId(selectedYear.value, selectedMonth.value);
+});
+const selectedPeriod = computed(() =>
+  periods.value.find((period) => period.id === selectedPeriodId.value) || null,
+);
+const yearOptions = computed(() =>
+  Array.from(new Set([...periods.value.map((period) => period.year), selectedYear.value].filter(Number.isInteger)))
+    .sort((a, b) => b - a)
+    .map((year) => ({ value: year, label: String(year) })),
+);
+const availableMonths = computed(() => {
+  if (!Number.isInteger(selectedYear.value)) {
+    return [];
+  }
+
+  const months = Array.from(
+    new Set(
+      periods.value
+        .filter((period) => period.year === selectedYear.value)
+        .map((period) => period.month),
+    ),
+  ).sort((a, b) => a - b);
+
+  if (months.length === 0 && selectedYear.value === defaultPeriod.year) {
+    return monthOptions.filter((option) => option.value === defaultPeriod.month);
+  }
+
+  return monthOptions.filter((option) => months.includes(option.value));
+});
+const periodLabel = computed(() => {
+	if (selectedPeriod.value?.label) {
+		return selectedPeriod.value.label;
+	}
+
+	if (Number.isInteger(selectedYear.value) && Number.isInteger(selectedMonth.value)) {
+		return buildMonthLabel(selectedYear.value, selectedMonth.value);
+	}
+
+	return "";
+});
+const isDataReady = computed(() =>
+	authReady.value &&
+	(!isAuthenticated.value || (hasLoadedUiPreferences.value && hasLoadedPeriods.value)),
+);
+const navigationTabs = computed(() => {
+  if (!isAuthenticated.value) {
+    return [{ value: "settings", label: "Configuracoes", icon: "settings" }];
+  }
+
+  return [
+    { value: "home", label: "Home", icon: "home" },
+    { value: "summary", label: "Resumo", icon: "wallet" },
+    { value: "assets", label: "Ativos", icon: "grid" },
+    { value: "settings", label: "Configuracoes", icon: "settings" },
+  ];
+});
 
 function hexToRgb(hexColor) {
   const normalized = String(hexColor || "").trim().replace("#", "");
@@ -79,6 +178,16 @@ function userConfigDoc(uid) {
   return doc(db, "users", uid, "configs", "preferences");
 }
 
+function normalizeStoredYear(value) {
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized >= 2000 ? normalized : null;
+}
+
+function normalizeStoredMonth(value) {
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized >= 1 && normalized <= 12 ? normalized : null;
+}
+
 function applyTheme() {
   const activeTheme = theme.value;
   const accent = currentColor.value;
@@ -90,54 +199,135 @@ function applyTheme() {
   syncBrowserThemeColor(activeTheme);
 }
 
+function buildMonthLabel(year, month) {
+  const monthEntry = monthOptions.find((option) => option.value === month);
+  return monthEntry ? `${monthEntry.label} de ${year}` : String(year);
+}
+
+function periodExists(year, month) {
+  return periods.value.some((period) => period.year === year && period.month === month);
+}
+
+function resolveSelectedPeriod() {
+  if (periods.value.length === 0) {
+    selectedYear.value = preferredPeriod.value.year ?? defaultPeriod.year;
+    selectedMonth.value = preferredPeriod.value.month ?? defaultPeriod.month;
+    return;
+  }
+
+  if (periodExists(preferredPeriod.value.year, preferredPeriod.value.month)) {
+    selectedYear.value = preferredPeriod.value.year;
+    selectedMonth.value = preferredPeriod.value.month;
+    return;
+  }
+
+  if (periodExists(selectedYear.value, selectedMonth.value)) {
+    return;
+  }
+
+  const latestPeriod = periods.value[periods.value.length - 1];
+  selectedYear.value = latestPeriod.year;
+  selectedMonth.value = latestPeriod.month;
+}
+
+async function ensureDefaultStartingPeriod(uid) {
+	if (!uid || periods.value.length > 0 || isCreatingDefaultPeriod) {
+		return;
+	}
+
+	isCreatingDefaultPeriod = true;
+
+	try {
+		await ensurePeriod(uid, defaultPeriod.year, defaultPeriod.month, defaultPeriod.label);
+	} finally {
+		isCreatingDefaultPeriod = false;
+	}
+}
+
 async function savePreferences(patch) {
   if (!currentUser.value || !db) {
     return;
   }
 
-  const nextPreferences = { ...userPreferences.value, ...patch };
-  userPreferences.value = nextPreferences;
+  const payload = {
+    uid: currentUser.value.uid,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (Object.prototype.hasOwnProperty.call(patch, "darkMode")) {
+    userPreferences.value = { ...userPreferences.value, darkMode: patch.darkMode };
+    payload.darkMode = patch.darkMode;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, "themeColor")) {
+    userPreferences.value = { ...userPreferences.value, themeColor: patch.themeColor };
+    payload.themeColor = patch.themeColor;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, "selectedYear")) {
+    payload.selectedYear = normalizeStoredYear(patch.selectedYear);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, "selectedMonth")) {
+    payload.selectedMonth = normalizeStoredMonth(patch.selectedMonth);
+  }
+
   applyTheme();
 
   try {
-    await setDoc(
-      userConfigDoc(currentUser.value.uid),
-      {
-        uid: currentUser.value.uid,
-        darkMode: nextPreferences.darkMode,
-        themeColor: nextPreferences.themeColor,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    await setDoc(userConfigDoc(currentUser.value.uid), payload, { merge: true });
   } catch {
-    errorMessage.value = "Não foi possível salvar a preferência agora.";
+    errorMessage.value = "Nao foi possivel salvar a preferencia agora.";
   }
 }
 
 function listenPreferences(uid) {
   if (!db) {
+    hasLoadedUiPreferences.value = true;
     return;
   }
 
+  hasLoadedUiPreferences.value = false;
   unsubscribePreferences?.();
   unsubscribePreferences = onSnapshot(userConfigDoc(uid), async (snapshot) => {
     if (!snapshot.exists()) {
+      hasLoadedUiPreferences.value = true;
       await savePreferences(userPreferences.value);
       return;
     }
 
+    const data = snapshot.data();
     userPreferences.value = {
-      darkMode: snapshot.data().darkMode !== false,
-      themeColor: snapshot.data().themeColor || "#4f7cff",
+      darkMode: data.darkMode !== false,
+      themeColor: data.themeColor || "#4f7cff",
+    };
+    preferredPeriod.value = {
+      year: normalizeStoredYear(data.selectedYear),
+      month: normalizeStoredMonth(data.selectedMonth),
     };
     applyTheme();
+    resolveSelectedPeriod();
+    hasLoadedUiPreferences.value = true;
+  });
+}
+
+function listenPeriods(uid) {
+  hasLoadedPeriods.value = false;
+  unsubscribePeriods?.();
+  unsubscribePeriods = subscribePeriods(uid, async (nextPeriods) => {
+    periods.value = nextPeriods;
+    resolveSelectedPeriod();
+    hasLoadedPeriods.value = true;
+
+    if (nextPeriods.length === 0) {
+      await ensureDefaultStartingPeriod(uid);
+    }
   });
 }
 
 async function handleGoogleSignIn() {
   if (!auth) {
-    errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
+    errorMessage.value = "Firebase nao inicializado. Verifique a configuracao do projeto.";
     return;
   }
 
@@ -147,7 +337,7 @@ async function handleGoogleSignIn() {
   try {
     await signInWithPopup(auth, provider);
   } catch {
-    errorMessage.value = "Não foi possível autenticar com Google.";
+    errorMessage.value = "Nao foi possivel autenticar com Google.";
   } finally {
     status.value = "idle";
   }
@@ -183,9 +373,108 @@ function reloadWithNewVersion() {
 
 function clearUserState() {
   unsubscribePreferences?.();
+  unsubscribePeriods?.();
+  periods.value = [];
+  hasLoadedUiPreferences.value = false;
+  hasLoadedPeriods.value = false;
+  preferredPeriod.value = { year: null, month: null };
   userPreferences.value = { darkMode: true, themeColor: "#4f7cff" };
+  selectedYear.value = defaultPeriod.year;
+  selectedMonth.value = defaultPeriod.month;
+  currentPage.value = "settings";
   applyTheme();
 }
+
+function handleTabSelection(nextPage) {
+  if (!isAuthenticated.value && nextPage !== "settings") {
+    currentPage.value = "settings";
+    return;
+  }
+
+  currentPage.value = nextPage;
+}
+
+function openPeriodModal() {
+  periodModalYear.value = selectedYear.value || today.getFullYear();
+  periodModalMonth.value = selectedMonth.value || today.getMonth() + 1;
+  isPeriodModalOpen.value = true;
+}
+
+function closePeriodModal() {
+  isPeriodModalOpen.value = false;
+}
+
+async function savePeriod() {
+  if (!currentUser.value || !Number.isInteger(periodModalYear.value) || !Number.isInteger(periodModalMonth.value)) {
+    return;
+  }
+
+  status.value = "loading";
+
+  try {
+    if (!periodExists(periodModalYear.value, periodModalMonth.value)) {
+      await ensurePeriod(
+        currentUser.value.uid,
+        periodModalYear.value,
+        periodModalMonth.value,
+        buildMonthLabel(periodModalYear.value, periodModalMonth.value),
+      );
+    }
+
+    selectedYear.value = periodModalYear.value;
+    selectedMonth.value = periodModalMonth.value;
+    closePeriodModal();
+  } finally {
+    status.value = "idle";
+  }
+}
+
+async function deleteSelectedPeriod() {
+  if (!selectedPeriod.value || !currentUser.value) {
+    return;
+  }
+
+  const shouldDelete = window.confirm(`Excluir o mes ${selectedPeriod.value.label}?`);
+  if (!shouldDelete) {
+    return;
+  }
+
+  status.value = "loading";
+
+  try {
+    await deleteDoc(doc(db, "users", currentUser.value.uid, "periods", selectedPeriod.value.id));
+  } finally {
+    status.value = "idle";
+  }
+}
+
+watch(
+  () => selectedYear.value,
+  (year) => {
+    if (!Number.isInteger(year)) {
+      selectedMonth.value = null;
+      return;
+    }
+
+    if (availableMonths.value.some((option) => option.value === selectedMonth.value)) {
+      return;
+    }
+
+    selectedMonth.value = availableMonths.value[0]?.value ?? null;
+  },
+);
+
+watch(
+  () => [selectedYear.value, selectedMonth.value, currentUser.value?.uid],
+  async ([year, month, uid]) => {
+    if (!uid || !periodExists(year, month)) {
+      return;
+    }
+
+    preferredPeriod.value = { year, month };
+    await savePreferences({ selectedYear: year, selectedMonth: month });
+  },
+);
 
 onMounted(() => {
   applyTheme();
@@ -193,21 +482,39 @@ onMounted(() => {
 
   if (!auth) {
     authReady.value = true;
-    errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
+    currentPage.value = "settings";
+    errorMessage.value = "Firebase nao inicializado. Verifique a configuracao do projeto.";
     return;
   }
 
-  unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+  const applyAuthState = (user) => {
     currentUser.value = user;
     authReady.value = true;
 
     if (user) {
       errorMessage.value = "";
+      currentPage.value = "home";
       listenPreferences(user.uid);
+      listenPeriods(user.uid);
       return;
     }
 
     clearUserState();
+  };
+
+  if (typeof auth.authStateReady === "function") {
+    auth
+      .authStateReady()
+      .then(() => {
+        applyAuthState(auth.currentUser);
+      })
+      .catch(() => {
+        applyAuthState(auth.currentUser);
+      });
+  }
+
+  unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    applyAuthState(user);
   });
 });
 
@@ -215,6 +522,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("app-update-available", handleAppUpdateAvailable);
   unsubscribeAuth?.();
   unsubscribePreferences?.();
+  unsubscribePeriods?.();
 });
 </script>
 
@@ -223,8 +531,8 @@ onBeforeUnmount(() => {
     <div class="app-page">
       <section v-if="isUpdateAvailable" class="update-banner">
         <div class="update-banner-copy">
-          <strong>Nova versão disponível</strong>
-          <span>Atualize o app para carregar a última versão instalada no PWA.</span>
+          <strong>Nova versao disponivel</strong>
+          <span>Atualize o app para carregar a ultima versao instalada no PWA.</span>
         </div>
         <button class="primary-button" type="button" @click="reloadWithNewVersion">
           <span class="button-icon" aria-hidden="true">
@@ -236,31 +544,20 @@ onBeforeUnmount(() => {
         </button>
       </section>
 
-      <header v-if="isHomePage" class="hero-card page-section">
-        <div class="hero-copy">
-          <p class="eyebrow">Plataforma pessoal de patrimônio</p>
-          <h1>{{ appMeta.name }}</h1>
-          <p class="hero-description">
-            Acompanhamento pessoal de patrimônio, alocação e evolução dos investimentos com uma interface premium e consistente.
-          </p>
-        </div>
-      </header>
-
-      <h1 v-if="!isHomePage" class="tittle">{{ appMeta.name }}</h1>
+      <h1 class="tittle">{{ appMeta.name }}</h1>
 
       <div v-if="!authReady" class="page-section status-card">
-        <strong>Carregando autenticação...</strong>
+        <strong>Carregando autenticacao...</strong>
       </div>
 
       <ConfiguracoesView
-        v-else
-        v-show="currentPage === 'settings'"
+        v-else-if="!isAuthenticated"
         class="management-page-section"
         :theme="theme"
         :theme-color="currentColor"
         :user-email="currentUser?.email || ''"
         :is-authenticated="isAuthenticated"
-        :is-submitting="status === 'loading'"
+        :is-submitting="isSubmitting"
         :auth-error="errorMessage"
         @update-theme="savePreferences({ darkMode: $event === 'dark' })"
         @update-theme-color="savePreferences({ themeColor: $event })"
@@ -268,7 +565,80 @@ onBeforeUnmount(() => {
         @logout="handleSignOut"
       />
 
-      <BottomTabs :tabs="navigationTabs" :current-tab="currentPage" @select="currentPage = $event" />
+      <div v-else-if="!isDataReady" class="page-section status-card">
+        <strong>Conectando dados online...</strong>
+      </div>
+
+      <HomeView
+        v-else-if="currentPage === 'home'"
+        :year-options="yearOptions"
+        :month-options="availableMonths"
+        :selected-year="selectedYear"
+        :selected-month="selectedMonth"
+        :period-label="periodLabel"
+        :has-selected-period="Boolean(periodLabel)"
+        :is-submitting="isSubmitting"
+        @update:year="selectedYear = $event"
+        @update:month="selectedMonth = $event"
+        @add-month="openPeriodModal"
+        @delete-month="deleteSelectedPeriod"
+      />
+
+      <ResumoView v-else-if="currentPage === 'summary'" />
+
+      <AtivosView v-else-if="currentPage === 'assets'" />
+
+      <ConfiguracoesView
+        v-else
+        class="management-page-section"
+        :theme="theme"
+        :theme-color="currentColor"
+        :user-email="currentUser?.email || ''"
+        :is-authenticated="isAuthenticated"
+        :is-submitting="isSubmitting"
+        :auth-error="errorMessage"
+        @update-theme="savePreferences({ darkMode: $event === 'dark' })"
+        @update-theme-color="savePreferences({ themeColor: $event })"
+        @login="handleGoogleSignIn"
+        @logout="handleSignOut"
+      />
+
+      <BottomTabs
+        v-if="authReady && isAuthenticated && isDataReady"
+        :tabs="navigationTabs"
+        :current-tab="currentPage"
+        @select="handleTabSelection"
+      />
+
+      <div v-if="isPeriodModalOpen" class="modal-backdrop" @click="closePeriodModal">
+        <div class="modal-card narrow-mobile-modal" @click.stop>
+          <header class="modal-header">
+            <h2>Adicionar mes</h2>
+            <p>Escolha o ano e o mes que deseja abrir na carteira.</p>
+          </header>
+
+          <div class="modal-fields">
+            <label class="field-group">
+              <span class="field-label">Ano</span>
+              <input v-model.number="periodModalYear" class="text-input" type="number" min="2000" step="1" />
+            </label>
+
+            <label class="field-group">
+              <span class="field-label">Mes</span>
+              <AppSelect v-model="periodModalMonth" :options="monthOptions" placeholder="Escolha o mes" />
+            </label>
+          </div>
+
+          <div class="modal-actions">
+            <button class="primary-button" type="button" :disabled="isSubmitting" @click="savePeriod">
+              Salvar
+            </button>
+            <button class="secondary-button" type="button" :disabled="isSubmitting" @click="closePeriodModal">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -290,7 +660,7 @@ onBeforeUnmount(() => {
 
 .page-section,
 .status-card,
-.hero-card {
+.modal-card {
   position: relative;
   z-index: 1;
   display: grid;
@@ -312,35 +682,9 @@ onBeforeUnmount(() => {
   justify-self: center;
 }
 
-.hero-card {
-  overflow: hidden;
-  min-height: 220px;
-  background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--color-primary) 22%, transparent) 0%, transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--glass-surface-strong) 94%, transparent) 0%, var(--glass-surface) 100%);
-}
-
-.hero-copy {
-  width: min(100%, 680px);
-  display: grid;
-  gap: 12px;
-}
-
-.eyebrow {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-primary);
-}
-
-.hero-description {
-  max-width: 56ch;
-  color: var(--text);
-}
-
 .tittle {
   text-align: center;
+  margin: 12px 0 8px;
 }
 
 .status-card {
@@ -376,7 +720,8 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
-.primary-button {
+.primary-button,
+.secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -384,10 +729,7 @@ onBeforeUnmount(() => {
   padding: 12px 16px;
   position: relative;
   overflow: hidden;
-  border: 1px solid transparent;
   border-radius: 16px;
-  background: var(--button-bg);
-  color: var(--button-text);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -395,7 +737,6 @@ onBeforeUnmount(() => {
   appearance: none;
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
-  box-shadow: var(--button-shadow);
   transition:
     transform 0.18s ease,
     background 0.18s ease,
@@ -406,8 +747,20 @@ onBeforeUnmount(() => {
     opacity 0.18s ease;
 }
 
+.primary-button {
+  border: 1px solid transparent;
+  background: var(--button-bg);
+  color: var(--button-text);
+  box-shadow: var(--button-shadow);
+}
+
+.secondary-button {
+  border: 1px solid var(--theme-button-border);
+  background: var(--theme-button-bg);
+  color: var(--text-h);
+}
+
 .primary-button:hover {
-  transform: translateY(-1px);
   border-color: var(--theme-button-hover-border);
   background: var(--button-hover);
   color: var(--button-text);
@@ -415,22 +768,65 @@ onBeforeUnmount(() => {
   filter: saturate(1.06);
 }
 
-.primary-button:focus-visible {
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
   border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    var(--button-shadow-hover);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.primary-button:active:not(:disabled) {
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
   transform: translateY(0);
   border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    var(--button-shadow);
-  filter: saturate(1.02);
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.secondary-button:hover {
+  border-color: var(--theme-button-hover-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+    var(--theme-button-hover-bg);
+  color: var(--text-h);
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+  transform: translateY(-1px);
+}
+
+.danger-button {
+  border-color: var(--danger-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+    var(--danger-bg);
+  color: var(--danger-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.danger-button:hover {
+  border-color: var(--danger-border-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+    var(--danger-hover);
+}
+
+.danger-button:focus-visible,
+.danger-button:active:not(:disabled) {
+  border-color: var(--danger-border-strong);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .button-icon {
@@ -450,14 +846,77 @@ onBeforeUnmount(() => {
   stroke-linejoin: round;
 }
 
-@media (min-width: 481px) and (max-width: 1023px) {
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 10, 18, 0.52);
+  backdrop-filter: blur(12px);
+}
+
+.modal-card {
+  width: min(100%, 460px);
+  gap: 18px;
+  padding: 20px;
+}
+
+.modal-header {
+  display: grid;
+  gap: 6px;
+}
+
+.modal-header p {
+  color: var(--text);
+}
+
+.modal-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.field-group {
+  display: grid;
+  gap: 8px;
+}
+
+.field-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.text-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  background: var(--input-surface);
+  color: var(--input-text);
+  outline: none;
+}
+
+.text-input:focus-visible {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
   .app-page {
     padding-inline: 18px;
   }
 
   .page-section,
-  .status-card,
-  .hero-card {
+  .status-card {
     padding: 16px;
   }
 
@@ -466,7 +925,7 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .app-page {
     gap: 14px;
     padding: 14px 12px 118px;
@@ -479,8 +938,7 @@ onBeforeUnmount(() => {
   }
 
   .page-section,
-  .status-card,
-  .hero-card {
+  .status-card {
     padding: 16px;
     border-radius: 20px;
   }
@@ -492,6 +950,20 @@ onBeforeUnmount(() => {
   .update-banner {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .modal-backdrop {
+    padding: 14px;
+    align-items: end;
+  }
+
+  .modal-card.narrow-mobile-modal {
+    width: 100%;
+    border-radius: 22px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
   }
 }
 </style>

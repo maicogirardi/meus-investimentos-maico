@@ -11,7 +11,7 @@ Manter o mesmo raciocínio do `financas-app`:
 
 * `npm run build` gera a build com base `/meus-investimentos-maico/`
 * `npm run deploy` continua disponível para fluxo com `gh-pages`, se necessário
-* `npm run build:firebase` troca temporariamente o `base` para `/` e faz o build
+* `npm run build:firebase` roda `vite build --mode firebase` e gera a build com base `/`
 * `npm run deploy:firebase` roda o build do Firebase e publica no hosting
 
 ## GitHub Pages

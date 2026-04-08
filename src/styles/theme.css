@@ -40,6 +40,19 @@
   --input-focus-border: color-mix(in srgb, var(--color-primary) 58%, rgba(15, 30, 55, 0.16));
   --input-focus-ring: color-mix(in srgb, var(--color-primary) 20%, transparent);
   --input-disabled-bg: rgba(231, 238, 250, 0.72);
+  --select-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, color-mix(in srgb, var(--color-primary) 8%, rgba(255, 255, 255, 0.82)) 100%);
+  --select-surface-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, color-mix(in srgb, var(--color-primary) 12%, rgba(255, 255, 255, 0.88)) 100%);
+  --select-border: color-mix(in srgb, var(--color-primary) 24%, rgba(21, 18, 32, 0.12));
+  --select-border-hover: color-mix(in srgb, var(--color-primary) 44%, rgba(21, 18, 32, 0.16));
+  --select-arrow: color-mix(in srgb, var(--color-primary) 58%, #433254);
+  --select-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 10px 24px color-mix(in srgb, var(--color-primary) 12%, rgba(8, 17, 31, 0.04));
+  --select-option-bg: color-mix(in srgb, var(--color-primary) 10%, #ffffff);
+  --select-option-text: #6b6375;
+  --select-option-hover-bg: color-mix(in srgb, var(--color-primary) 14%, #ffffff);
+  --select-option-selected-bg: color-mix(in srgb, var(--color-primary) 22%, #ffffff);
+  --select-option-selected-text: #5f566b;
   --validation-error-bg: rgba(220, 38, 38, 0.12);
   --validation-error-border: rgba(220, 38, 38, 0.78);
   --validation-error-text: #b42318;
@@ -96,6 +109,19 @@
   --input-focus-border: color-mix(in srgb, var(--color-primary) 62%, rgba(255, 255, 255, 0.14));
   --input-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
   --input-disabled-bg: rgba(255, 255, 255, 0.06);
+  --select-surface: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 10%, rgba(33, 35, 45, 0.96)) 0%, rgba(24, 25, 33, 0.94) 100%);
+  --select-surface-hover: linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 14%, rgba(41, 43, 56, 0.98)) 0%, rgba(28, 29, 39, 0.96) 100%);
+  --select-border: color-mix(in srgb, var(--color-primary) 20%, rgba(255, 255, 255, 0.14));
+  --select-border-hover: color-mix(in srgb, var(--color-primary) 42%, rgba(255, 255, 255, 0.16));
+  --select-arrow: color-mix(in srgb, var(--color-primary) 62%, #f1e7fb);
+  --select-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 28px color-mix(in srgb, var(--color-primary) 12%, rgba(0, 0, 0, 0.22));
+  --select-option-bg: color-mix(in srgb, var(--color-primary) 9%, #23252f);
+  --select-option-text: #f3f4f6;
+  --select-option-hover-bg: color-mix(in srgb, var(--color-primary) 15%, #23252f);
+  --select-option-selected-bg: color-mix(in srgb, var(--color-primary) 26%, #23252f);
+  --select-option-selected-text: #ffffff;
   --validation-error-bg: rgba(248, 113, 113, 0.12);
   --validation-error-border: rgba(248, 113, 113, 0.72);
   --validation-error-text: #fecaca;
