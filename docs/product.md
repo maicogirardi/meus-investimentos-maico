@@ -1,252 +1,244 @@
-# App de Investimentos — Visão de Produto
+# Fonte de Verdade do Projeto
 
-## Objetivo
+Este arquivo substitui a malha anterior de documentos. A partir de agora ele concentra:
 
-Aplicativo pessoal para acompanhamento manual da carteira de investimentos, com atualização **diária** a partir dos valores exibidos no app do banco.
+* objetivo do produto
+* implementação real do projeto
+* arquitetura prática
+* fluxo de publicação
+* divergências conhecidas entre a visão desejada e o que o código entrega hoje
 
-O foco do produto é permitir que o usuário alimente rapidamente:
+Se houver conflito entre documentação antiga, este arquivo deve ser considerado a referência principal.
 
-- saldo líquido atual do ativo;
-- saldo bruto atual do ativo;
-- aportes;
-- saques normais;
-- saques extras.
+## 1. Objetivo do produto
 
-A partir disso, o app calcula automaticamente:
+O app existe para acompanhar patrimônio, alocação e evolução dos investimentos de forma manual, com base nos valores vistos no app do banco.
 
-- rendimento líquido do dia;
-- rendimento bruto do dia;
-- rendimento acumulado do mês;
-- rendimento acumulado do ano;
-- saldo total da carteira.
+Direção consolidada:
 
----
+* stack alinhada ao `financas-app`
+* Vue 3 + Vite + Firebase
+* autenticação privada com Google
+* Firestore como banco principal
+* Firebase Hosting como ambiente principal de teste real
+* GitHub Pages como ambiente secundário
+* layout desktop first com boa adaptação para tablet e mobile
+* PWA viável para uso no celular
 
-## Princípio central do app
+## 2. O que já está implementado
 
-O usuário **não vai digitar o rendimento manualmente mês a mês**.
+### Shell do app
 
-Em vez disso, o usuário vai informar diariamente o que vê no banco:
+O projeto já possui navegação principal com quatro abas:
 
-- valor total líquido atual;
-- valor total bruto atual.
+* `Home`
+* `Resumo`
+* `Ativos`
+* `Configurações`
 
-O app então compara esse valor com o último valor salvo e calcula quanto o ativo rendeu no dia.
+A base visual, o tema, a navegação inferior, o service worker e o banner de atualização seguem o mesmo raciocínio do `financas-app`.
 
----
+### Autenticação e preferências
 
-## Conceito financeiro usado no app
+Já funciona hoje:
 
-O app separa o que é:
+* login com Google
+* logout
+* persistência de preferências em `users/{uid}/configs/preferences`
+* sincronização realtime das preferências
+* persistência do período selecionado pelo usuário
 
-- **capital investido**
-- **rendimento**
-- **movimentação de principal**
-- **movimentação de rendimento**
+Campos usados hoje em `users/{uid}/configs/preferences`:
 
-Essa separação é importante porque hoje você usa uma planilha em que parte dos saques reduz o rendimento, enquanto outro tipo de saque reduz o principal. Essa lógica é boa e vale a pena manter no app.
+* `darkMode`
+* `themeColor`
+* `selectedYear`
+* `selectedMonth`
 
-### 1. Capital investido
+### Períodos
 
-É o valor base do ativo, formado por:
+Já funciona hoje:
 
-- valor inicial
-- mais aportes
-- menos saques extras
+* listener realtime de períodos
+* criação manual de período
+* exclusão manual de período
+* criação automática de um período padrão quando o usuário ainda não tem nenhum
 
-**Fórmula:**
+Observação importante:
 
-`capitalInvestido = valorInicial + aportesAcumulados - saquesExtrasAcumulados`
+* o período padrão está hardcoded como abril de 2026 no código atual
 
-### 2. Saque normal
+### Ativos
 
-É uma retirada feita do rendimento do ativo.
+Já funciona hoje:
 
-Exemplos:
+* listener realtime de ativos
+* cadastro de ativo com `name`, `institution`, `category`, `startDate` e `initialValue`
+* exclusão de ativo com remoção em cascata de documentos relacionados por `assetId`
+* criação automática de `assetMonthlyStates/{assetId}__{periodId}` ao cadastrar o ativo
 
-- retirada mensal de lucro;
-- retirada pequena de rendimento para uso pessoal.
+Campos criados hoje no estado mensal inicial:
 
-Esse saque **não reduz o capital investido**.
+* `assetId`
+* `periodId`
+* `openingCapitalInvested`
+* `currentCapitalInvested`
+* `openingLiquidBalance`
+* `currentLiquidBalance`
+* `openingGrossBalance`
+* `currentGrossBalance`
+* `monthNetIncome`
+* `monthGrossIncome`
+* `monthContributions`
+* `monthNormalWithdrawals`
+* `monthExtraWithdrawals`
+* `lastReadingDate`
 
-### 3. Saque extra
+### Estado real das telas
 
-É uma retirada maior, tratada como saída de principal ou mudança estrutural da carteira.
+`Home` hoje:
 
-Exemplos:
+* permite selecionar ano e mês
+* permite criar e excluir período
+* mostra apenas um card-resumo ainda estático
+* ainda não lista ativos nem calcula saldo total da carteira
 
-- compra de outro ativo;
-- compra de imóvel;
-- retirada grande do montante principal.
+`Resumo` hoje:
 
-Esse saque **reduz o capital investido**.
+* continua como placeholder
 
----
+`Ativos` hoje:
 
-## Melhor ajuste de regra para o seu uso
+* já está funcional para cadastro e exclusão
+* lista nome, valor inicial, instituição, categoria e data inicial
 
-Pelo seu uso atual, a modelagem mais adequada é:
+`Configurações` hoje:
 
-- o usuário alimenta diariamente apenas:
-	- saldo líquido atual;
-	- saldo bruto atual;
-- o app registra separadamente:
-	- aporte;
-	- saque normal;
-	- saque extra;
-- o app calcula o rendimento do dia com base na diferença entre o valor atual e o anterior, compensando movimentações.
+* já está funcional para tema, cor do tema, login e logout
 
-Isso é melhor do que digitar manualmente “rendimento do dia” porque:
+## 3. Escopo funcional desejado
 
-- reduz erro manual;
-- acompanha melhor o app do banco;
-- mantém histórico consistente;
-- separa rentabilidade real de movimentação financeira.
+O fluxo-alvo do produto continua este:
 
----
+* o usuário informa saldo líquido atual e saldo bruto atual por ativo
+* o usuário registra aportes, saques normais e saques extras separadamente
+* o app calcula automaticamente rendimento diário, acumulados e saldo consolidado
 
-## Estrutura das telas
+Regras principais ainda válidas para a fase de implementação:
 
-## 1. Home
+* `capitalInvestido = valorInicial + soma(aportes) - soma(saquesExtras)`
+* `rendimentoLiquidoDia = saldoLiquidoAtual - saldoLiquidoAnterior - aportesDoDia + saquesNormaisDoDia + saquesExtrasDoDia`
+* `rendimentoBrutoDia = saldoBrutoAtual - saldoBrutoAnterior - aportesDoDia + saquesNormaisDoDia + saquesExtrasDoDia`
 
-Tela principal e operacional do app.
+Escopo-alvo por tela:
 
-### Elementos
+`Home`
 
-- filtro de ano e mês;
-- botão de adicionar mês;
-- botão de excluir mês;
-- card principal com saldo total da carteira;
-- lista de cards dos ativos.
+* saldo total da carteira no período selecionado
+* cards por ativo
+* leitura diária de saldo líquido e bruto
+* ações de aporte, saque normal e saque extra
+* recálculo automático após qualquer alteração
 
-### Card de ativo
+`Resumo`
 
-Cada card deve mostrar:
+* histórico diário por ativo
+* totais do mês e do ano
+* lista de transações por tipo
 
-- nome do ativo;
-- saldo líquido atual;
-- saldo bruto atual;
-- rendimento líquido do dia;
-- rendimento bruto do dia;
-- capital investido;
-- total de aportes do mês;
-- total de saques normais do mês;
-- total de saques extras do mês;
-- botão de aporte;
-- botão de saque normal;
-- botão de saque extra;
-- botão de editar leitura diária.
+`Ativos`
 
-### Comportamento esperado
+* continuar como cadastro mestre
+* evoluir para edição quando necessário
 
-No dia a dia, o fluxo ideal da Home é:
+`Configurações`
 
-1. selecionar o mês;
-2. abrir o card do ativo;
-3. digitar saldo líquido atual;
-4. digitar saldo bruto atual;
-5. salvar;
-6. o app recalcula automaticamente os rendimentos.
+* manter login, logout e preferências visuais
 
----
+## 4. Modelo de dados
 
-## 2. Resumo
+### Estrutura em uso hoje
 
-Tela analítica do ativo.
+Coleções realmente usadas pelo código atual:
 
-Deve exibir por ativo:
+* `users/{uid}/configs/preferences`
+* `users/{uid}/periods/{periodId}`
+* `users/{uid}/assets/{assetId}`
+* `users/{uid}/assetMonthlyStates/{assetId}__{periodId}`
 
-- lista diária de saldo líquido;
-- lista diária de saldo bruto;
-- rendimento líquido diário;
-- rendimento bruto diário;
-- totais do mês;
-- totais do ano;
-- lista de aportes;
-- lista de saques normais;
-- lista de saques extras.
+Coleções que o código já considera em alguns fluxos, mas ainda não popula:
 
----
+* `users/{uid}/dailyReadings`
+* `users/{uid}/transactions`
 
-## 3. Ativos
+### Estrutura planejada
 
-Tela de cadastro.
+Para o MVP completo, a estrutura mais coerente continua sendo:
 
-Campos mínimos:
+* `users/{uid}/assets`
+* `users/{uid}/periods`
+* `users/{uid}/assetMonthlyStates`
+* `users/{uid}/dailyReadings`
+* `users/{uid}/transactions`
 
-- nome do ativo;
-- data do investimento;
-- valor inicial.
+Coleções de organização mais ampla continuam previstas, mas ainda fora da implementação real:
 
-Campos opcionais:
+* `users/{uid}/institutions`
+* `users/{uid}/accounts`
+* `users/{uid}/holdings`
+* `users/{uid}/snapshots`
 
-- instituição;
-- categoria;
-- observações.
+## 5. Mapa técnico do app
 
----
+Arquivos principais hoje:
 
-## 4. Configurações
+* `src/App.vue`: shell principal, auth, listeners, seleção de aba e modais de período
+* `src/views/HomeView.vue`: filtro de período e card principal ainda parcial
+* `src/views/ResumoView.vue`: placeholder
+* `src/views/AtivosView.vue`: CRUD visual de ativos
+* `src/views/ConfiguracoesView.vue`: preferências e sessão
+* `src/services/firebase.js`: bootstrap do Firebase via `VITE_FIREBASE_*`
+* `src/services/periods.js`: IDs, listener e criação de períodos
+* `src/services/assets.js`: listener, criação de ativo com estado mensal e exclusão em cascata
+* `public/sw.js`: cache básico e fluxo de atualização do PWA
+* `.github/workflows/deploy-pages.yml`: deploy automático do GitHub Pages
 
-Já existente no app base.
+## 6. Publicação e ambientes
 
-Itens:
+Scripts atuais:
 
-- light/dark mode;
-- cor do tema;
-- login/logout.
+* `npm run build`: build para GitHub Pages
+* `npm run deploy`: fallback manual com `gh-pages`
+* `npm run build:firebase`: build para Firebase Hosting
+* `npm run deploy:firebase`: script de deploy para Firebase Hosting
 
----
+Ambientes:
 
-## Unidade principal do app
+* GitHub Pages: `https://maicogirardi.github.io/meus-investimentos-maico/`
+* Firebase Hosting: `https://meus-investimentos-maico.web.app`
 
-O app vai funcionar em cima de duas camadas:
+Firebase atual:
 
-### Camada 1 — Período mensal
+* projeto: `meus-investimentos-maico`
+* app web: `investimentos-web`
+* Firestore default em `southamerica-east1`
 
-Usada para:
+## 7. Divergências conhecidas para ajustar depois
 
-- filtro de mês/ano;
-- totais mensais;
-- herança de valores para o mês seguinte.
+Estas são as principais divergências entre a documentação antiga e o código atual:
 
-### Camada 2 — Leituras diárias
+1. A documentação antiga descrevia `Home`, `Resumo`, leituras diárias, transações e cálculos como se estivessem implementados. Isso ainda não está pronto.
+2. O app real hoje usa apenas `preferences`, `periods`, `assets` e `assetMonthlyStates`. As coleções `institutions`, `accounts`, `holdings`, `snapshots`, `dailyReadings` e `transactions` ainda não fazem parte do fluxo completo.
+3. Depois do login, o app abre `Home`. Alguns documentos antigos diziam que a primeira tela autenticada era `Configurações`.
+4. A exclusão de período hoje remove apenas o documento do período. Ela ainda não bloqueia a exclusão do único período existente, não faz cascata e não protege a consistência histórica.
+5. O total da carteira mostrado na `Home` ainda é estático em `0`, então o dashboard patrimonial ainda não consome `assetMonthlyStates`.
+6. A regra de virada de mês com herança do estado final do mês anterior ainda não existe no backend nem no frontend.
+7. O período padrão inicial está fixo em abril de 2026, o que é útil para bootstrap, mas não é uma regra de produto definitiva.
 
-Usada para:
+## 8. Regra de manutenção da documentação
 
-- registrar saldo líquido e bruto do dia;
-- calcular rendimento diário;
-- construir o histórico do mês.
+Ao evoluir o app:
 
-Essa combinação resolve o seu uso real.
-
----
-
-## Regra para virada de mês
-
-Quando um novo mês for criado:
-
-- o mês novo recebe os valores finais do mês anterior;
-- o capital investido é herdado;
-- a última leitura líquida vira ponto de partida do novo mês;
-- a última leitura bruta vira ponto de partida do novo mês;
-- o histórico diário do novo mês começa vazio;
-- o usuário volta a alimentar dia a dia.
-
----
-
-## Importação futura
-
-Posteriormente, o app deve permitir importar automaticamente os meses já existentes da planilha.
-
-Idealmente, a importação deve criar:
-
-- períodos;
-- snapshots mensais;
-- leituras diárias, se existirem;
-- aportes;
-- saques normais;
-- saques extras.
-
-Esse item fica fora do MVP, mas a modelagem já deve nascer preparada para isso.
-
+* atualizar primeiro este arquivo se a implementação mudar comportamento, dados ou publicação
+* evitar recriar documentos separados para roadmap, Firebase, tema ou cálculos enquanto este arquivo continuar claro
+* se um novo arquivo voltar a ser necessário, ele deve existir para complementar este documento, nunca para repetir seu conteúdo
