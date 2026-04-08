@@ -29,6 +29,9 @@
 * mesma base de tipografia, espacamento, glass surfaces, botoes, navegacao inferior e popup de atualizacao usada no `financas-app`
 * identidade visual ajustada para fundo azul-marinho no lugar do preto dominante do projeto de financas
 * telas que tenham equivalente no `financas-app` devem ser reproduzidas literalmente antes de qualquer customizacao adicional
+* listener realtime inicial para `users/{uid}/assets`
+* tela de Ativos com cadastro manual, listagem e exclusao com confirmacao
+* criacao de `assetMonthlyStates` no periodo selecionado junto com o cadastro inicial do ativo
 
 ## Arquitetura funcional agora consolidada
 

@@ -1,7 +1,7 @@
 <template>
   <section class="placeholder-view">
     <h2>Resumo</h2>
-    <p>Esta area vai concentrar o historico diario, totais do mes e totais do ano por ativo.</p>
+    <p>Esta área vai concentrar o histórico diário, totais do mês e totais do ano por ativo.</p>
   </section>
 </template>
 

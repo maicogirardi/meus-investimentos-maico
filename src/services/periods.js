@@ -40,7 +40,7 @@ export function subscribePeriods(uid, callback) {
 export async function ensurePeriod(uid, year, month, label) {
   const db = getFirebaseDb();
   if (!db || !uid) {
-    throw new Error("Firebase nao inicializado.");
+    throw new Error("Firebase não inicializado.");
   }
 
   const id = buildPeriodId(year, month);

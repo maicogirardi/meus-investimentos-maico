@@ -1,0 +1,136 @@
+import {
+	collection,
+	doc,
+	getDocs,
+	onSnapshot,
+	query,
+	serverTimestamp,
+	where,
+	writeBatch,
+} from "firebase/firestore";
+import { getFirebaseDb } from "./firebase";
+import { buildPeriodId } from "./periods";
+
+function normalizeText(value) {
+	return String(value || "").trim();
+}
+
+function normalizeAmount(value) {
+	const normalized = Number(value);
+	return Number.isFinite(normalized) ? Number(normalized.toFixed(2)) : 0;
+}
+
+export function subscribeAssets(uid, callback) {
+	const db = getFirebaseDb();
+	if (!db || !uid) {
+		return () => {};
+	}
+
+	const assetsCollection = collection(db, "users", uid, "assets");
+
+	return onSnapshot(assetsCollection, (snapshot) => {
+		const assets = snapshot.docs
+			.map((assetDoc) => {
+				const data = assetDoc.data() || {};
+				return {
+					id: assetDoc.id,
+					name: normalizeText(data.name),
+					institution: normalizeText(data.institution),
+					category: normalizeText(data.category),
+					startDate: normalizeText(data.startDate),
+					initialValue: normalizeAmount(data.initialValue),
+					isActive: data.isActive !== false,
+				};
+			})
+			.filter((asset) => asset.name.length > 0)
+			.sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+
+		callback(assets);
+	});
+}
+
+export async function createAssetWithMonthlyState(uid, assetInput, period) {
+	const db = getFirebaseDb();
+	if (!db || !uid) {
+		throw new Error("Firebase não inicializado.");
+	}
+
+	if (!period || !Number.isInteger(period.year) || !Number.isInteger(period.month)) {
+		throw new Error("Período inválido.");
+	}
+
+	const name = normalizeText(assetInput.name);
+	const startDate = normalizeText(assetInput.startDate);
+	const institution = normalizeText(assetInput.institution);
+	const category = normalizeText(assetInput.category);
+	const initialValue = normalizeAmount(assetInput.initialValue);
+
+	if (!name || !startDate || initialValue <= 0) {
+		throw new Error("Dados do ativo inválidos.");
+	}
+
+	const assetRef = doc(collection(db, "users", uid, "assets"));
+	const periodId = buildPeriodId(period.year, period.month);
+	const monthlyStateRef = doc(db, "users", uid, "assetMonthlyStates", `${assetRef.id}__${periodId}`);
+	const timestamp = serverTimestamp();
+	const batch = writeBatch(db);
+
+	batch.set(assetRef, {
+		name,
+		startDate,
+		initialValue,
+		institution,
+		category,
+		isActive: true,
+		createdAt: timestamp,
+		updatedAt: timestamp,
+	});
+
+	batch.set(monthlyStateRef, {
+		assetId: assetRef.id,
+		periodId,
+		openingCapitalInvested: initialValue,
+		currentCapitalInvested: initialValue,
+		openingLiquidBalance: initialValue,
+		currentLiquidBalance: initialValue,
+		openingGrossBalance: initialValue,
+		currentGrossBalance: initialValue,
+		monthNetIncome: 0,
+		monthGrossIncome: 0,
+		monthContributions: 0,
+		monthNormalWithdrawals: 0,
+		monthExtraWithdrawals: 0,
+		lastReadingDate: "",
+		createdAt: timestamp,
+		updatedAt: timestamp,
+	});
+
+	await batch.commit();
+
+	return assetRef.id;
+}
+
+export async function deleteAssetCascade(uid, assetId) {
+	const db = getFirebaseDb();
+	if (!db || !uid || !assetId) {
+		throw new Error("Não foi possível excluir o ativo.");
+	}
+
+	const collectionNames = ["assetMonthlyStates", "dailyReadings", "transactions"];
+	const snapshots = await Promise.all(
+		collectionNames.map((collectionName) =>
+			getDocs(query(collection(db, "users", uid, collectionName), where("assetId", "==", assetId))),
+		),
+	);
+
+	const batch = writeBatch(db);
+	batch.delete(doc(db, "users", uid, "assets", assetId));
+
+	snapshots.forEach((snapshot) => {
+		snapshot.forEach((entry) => {
+			batch.delete(entry.ref);
+		});
+	});
+
+	await batch.commit();
+}

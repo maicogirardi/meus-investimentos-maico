@@ -6,6 +6,7 @@ import BottomTabs from "./components/navigation/BottomTabs.vue";
 import AppSelect from "./components/ui/AppSelect.vue";
 import { appMeta } from "./config/appConfig";
 import AppLayout from "./layout/AppLayout.vue";
+import { createAssetWithMonthlyState, deleteAssetCascade, subscribeAssets } from "./services/assets";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -32,24 +33,29 @@ const currentPage = ref("home");
 const userPreferences = ref({ darkMode: true, themeColor: "#4f7cff" });
 const hasLoadedUiPreferences = ref(false);
 const hasLoadedPeriods = ref(false);
+const hasLoadedAssets = ref(false);
 const preferredPeriod = ref({ year: null, month: null });
 const selectedYear = ref(null);
 const selectedMonth = ref(null);
 const periods = ref([]);
+const assets = ref([]);
 const isPeriodModalOpen = ref(false);
+const isDeletePeriodModalOpen = ref(false);
 const periodModalYear = ref(today.getFullYear());
 const periodModalMonth = ref(today.getMonth() + 1);
+const assetErrorMessage = ref("");
 
 let unsubscribeAuth = null;
 let unsubscribePreferences = null;
 let unsubscribePeriods = null;
+let unsubscribeAssets = null;
 let triggerAppUpdate = null;
 let isCreatingDefaultPeriod = false;
 
 const monthOptions = Object.freeze([
   { value: 1, label: "Janeiro" },
   { value: 2, label: "Fevereiro" },
-  { value: 3, label: "Marco" },
+  { value: 3, label: "Março" },
   { value: 4, label: "Abril" },
   { value: 5, label: "Maio" },
   { value: 6, label: "Junho" },
@@ -120,18 +126,18 @@ const periodLabel = computed(() => {
 });
 const isDataReady = computed(() =>
 	authReady.value &&
-	(!isAuthenticated.value || (hasLoadedUiPreferences.value && hasLoadedPeriods.value)),
+	(!isAuthenticated.value || (hasLoadedUiPreferences.value && hasLoadedPeriods.value && hasLoadedAssets.value)),
 );
 const navigationTabs = computed(() => {
   if (!isAuthenticated.value) {
-    return [{ value: "settings", label: "Configuracoes", icon: "settings" }];
+    return [{ value: "settings", label: "Configurações", icon: "settings" }];
   }
 
   return [
-    { value: "home", label: "Home", icon: "home" },
+    { value: "home", label: "Início", icon: "home" },
     { value: "summary", label: "Resumo", icon: "wallet" },
     { value: "assets", label: "Ativos", icon: "grid" },
-    { value: "settings", label: "Configuracoes", icon: "settings" },
+    { value: "settings", label: "Configurações", icon: "settings" },
   ];
 });
 
@@ -277,7 +283,7 @@ async function savePreferences(patch) {
   try {
     await setDoc(userConfigDoc(currentUser.value.uid), payload, { merge: true });
   } catch {
-    errorMessage.value = "Nao foi possivel salvar a preferencia agora.";
+    errorMessage.value = "Não foi possível salvar a preferência agora.";
   }
 }
 
@@ -325,9 +331,18 @@ function listenPeriods(uid) {
   });
 }
 
+function listenAssets(uid) {
+	hasLoadedAssets.value = false;
+	unsubscribeAssets?.();
+	unsubscribeAssets = subscribeAssets(uid, (nextAssets) => {
+		assets.value = nextAssets;
+		hasLoadedAssets.value = true;
+	});
+}
+
 async function handleGoogleSignIn() {
   if (!auth) {
-    errorMessage.value = "Firebase nao inicializado. Verifique a configuracao do projeto.";
+    errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
     return;
   }
 
@@ -337,7 +352,7 @@ async function handleGoogleSignIn() {
   try {
     await signInWithPopup(auth, provider);
   } catch {
-    errorMessage.value = "Nao foi possivel autenticar com Google.";
+    errorMessage.value = "Não foi possível autenticar com Google.";
   } finally {
     status.value = "idle";
   }
@@ -374,14 +389,20 @@ function reloadWithNewVersion() {
 function clearUserState() {
   unsubscribePreferences?.();
   unsubscribePeriods?.();
+  unsubscribeAssets?.();
   periods.value = [];
+  assets.value = [];
   hasLoadedUiPreferences.value = false;
   hasLoadedPeriods.value = false;
+  hasLoadedAssets.value = false;
   preferredPeriod.value = { year: null, month: null };
   userPreferences.value = { darkMode: true, themeColor: "#4f7cff" };
   selectedYear.value = defaultPeriod.year;
   selectedMonth.value = defaultPeriod.month;
   currentPage.value = "settings";
+  isPeriodModalOpen.value = false;
+  isDeletePeriodModalOpen.value = false;
+  assetErrorMessage.value = "";
   applyTheme();
 }
 
@@ -402,6 +423,83 @@ function openPeriodModal() {
 
 function closePeriodModal() {
   isPeriodModalOpen.value = false;
+}
+
+function openDeletePeriodModal() {
+  if (!selectedPeriod.value || !currentUser.value) {
+    return;
+  }
+
+  isDeletePeriodModalOpen.value = true;
+}
+
+function closeDeletePeriodModal() {
+  if (status.value === "loading") {
+    return;
+  }
+
+  isDeletePeriodModalOpen.value = false;
+}
+
+function getActiveModalActions() {
+  if (isPeriodModalOpen.value) {
+    return {
+      confirm: savePeriod,
+      cancel: closePeriodModal,
+    };
+  }
+
+  if (isDeletePeriodModalOpen.value) {
+    return {
+      confirm: confirmDeleteSelectedPeriod,
+      cancel: closeDeletePeriodModal,
+    };
+  }
+
+  return null;
+}
+
+function isKeyboardShortcutTargetBlocked() {
+  const activeElement = document.activeElement;
+
+  if (!(activeElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = activeElement.tagName;
+
+  return (
+    activeElement.isContentEditable ||
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
+    tagName === "BUTTON" ||
+    tagName === "A"
+  );
+}
+
+function handleModalKeydown(event) {
+  if (isSubmitting.value) {
+    return;
+  }
+
+  const modalActions = getActiveModalActions();
+  if (!modalActions) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    modalActions.cancel();
+    return;
+  }
+
+  if (event.key !== "Enter" || event.shiftKey || isKeyboardShortcutTargetBlocked()) {
+    return;
+  }
+
+  event.preventDefault();
+  void modalActions.confirm();
 }
 
 async function savePeriod() {
@@ -434,7 +532,7 @@ async function deleteSelectedPeriod() {
     return;
   }
 
-  const shouldDelete = window.confirm(`Excluir o mes ${selectedPeriod.value.label}?`);
+  const shouldDelete = window.confirm(`Excluir o mês ${selectedPeriod.value.label}?`);
   if (!shouldDelete) {
     return;
   }
@@ -446,6 +544,65 @@ async function deleteSelectedPeriod() {
   } finally {
     status.value = "idle";
   }
+}
+
+async function confirmDeleteSelectedPeriod() {
+  if (!selectedPeriod.value || !currentUser.value) {
+    return;
+  }
+
+  status.value = "loading";
+
+  try {
+    await deleteDoc(doc(db, "users", currentUser.value.uid, "periods", selectedPeriod.value.id));
+    closeDeletePeriodModal();
+  } finally {
+    status.value = "idle";
+  }
+}
+
+async function handleCreateAsset(assetInput) {
+	if (!currentUser.value) {
+		return;
+	}
+
+	assetErrorMessage.value = "";
+	status.value = "loading";
+
+	try {
+		await createAssetWithMonthlyState(currentUser.value.uid, assetInput, {
+			year: selectedYear.value,
+			month: selectedMonth.value,
+		});
+	} catch {
+		assetErrorMessage.value = "Não foi possível salvar o ativo agora.";
+	} finally {
+		status.value = "idle";
+	}
+}
+
+async function handleDeleteAsset(asset) {
+	if (!currentUser.value || !asset?.id) {
+		return;
+	}
+
+	const shouldDelete = window.confirm(
+		`Excluir o ativo ${asset.name}? Os registros vinculados a ele também serão removidos.`,
+	);
+	if (!shouldDelete) {
+		return;
+	}
+
+	assetErrorMessage.value = "";
+	status.value = "loading";
+
+	try {
+		await deleteAssetCascade(currentUser.value.uid, asset.id);
+	} catch {
+		assetErrorMessage.value = "Não foi possível excluir o ativo agora.";
+	} finally {
+		status.value = "idle";
+	}
 }
 
 watch(
@@ -478,12 +635,13 @@ watch(
 
 onMounted(() => {
   applyTheme();
+  window.addEventListener("keydown", handleModalKeydown);
   window.addEventListener("app-update-available", handleAppUpdateAvailable);
 
   if (!auth) {
     authReady.value = true;
     currentPage.value = "settings";
-    errorMessage.value = "Firebase nao inicializado. Verifique a configuracao do projeto.";
+    errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
     return;
   }
 
@@ -496,6 +654,7 @@ onMounted(() => {
       currentPage.value = "home";
       listenPreferences(user.uid);
       listenPeriods(user.uid);
+      listenAssets(user.uid);
       return;
     }
 
@@ -519,10 +678,12 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleModalKeydown);
   window.removeEventListener("app-update-available", handleAppUpdateAvailable);
   unsubscribeAuth?.();
   unsubscribePreferences?.();
   unsubscribePeriods?.();
+  unsubscribeAssets?.();
 });
 </script>
 
@@ -531,8 +692,8 @@ onBeforeUnmount(() => {
     <div class="app-page">
       <section v-if="isUpdateAvailable" class="update-banner">
         <div class="update-banner-copy">
-          <strong>Nova versao disponivel</strong>
-          <span>Atualize o app para carregar a ultima versao instalada no PWA.</span>
+          <strong>Nova versão disponível.</strong>
+          <span>Atualize o app para carregar a última versão instalada no PWA.</span>
         </div>
         <button class="primary-button" type="button" @click="reloadWithNewVersion">
           <span class="button-icon" aria-hidden="true">
@@ -547,7 +708,7 @@ onBeforeUnmount(() => {
       <h1 class="tittle">{{ appMeta.name }}</h1>
 
       <div v-if="!authReady" class="page-section status-card">
-        <strong>Carregando autenticacao...</strong>
+        <strong>Carregando autenticação...</strong>
       </div>
 
       <ConfiguracoesView
@@ -581,12 +742,21 @@ onBeforeUnmount(() => {
         @update:year="selectedYear = $event"
         @update:month="selectedMonth = $event"
         @add-month="openPeriodModal"
-        @delete-month="deleteSelectedPeriod"
+        @delete-month="openDeletePeriodModal"
       />
 
       <ResumoView v-else-if="currentPage === 'summary'" />
 
-      <AtivosView v-else-if="currentPage === 'assets'" />
+      <AtivosView
+        v-else-if="currentPage === 'assets'"
+        :assets="assets"
+        :selected-period-label="periodLabel"
+        :has-selected-period="Boolean(selectedPeriodId)"
+        :is-submitting="isSubmitting"
+        :error-message="assetErrorMessage"
+        @create-asset="handleCreateAsset"
+        @delete-asset="handleDeleteAsset"
+      />
 
       <ConfiguracoesView
         v-else
@@ -613,8 +783,8 @@ onBeforeUnmount(() => {
       <div v-if="isPeriodModalOpen" class="modal-backdrop" @click="closePeriodModal">
         <div class="modal-card narrow-mobile-modal" @click.stop>
           <header class="modal-header">
-            <h2>Adicionar mes</h2>
-            <p>Escolha o ano e o mes que deseja abrir na carteira.</p>
+            <h2>Adicionar mês</h2>
+            <p>Escolha o ano e o mês que deseja abrir na carteira.</p>
           </header>
 
           <div class="modal-fields">
@@ -624,8 +794,8 @@ onBeforeUnmount(() => {
             </label>
 
             <label class="field-group">
-              <span class="field-label">Mes</span>
-              <AppSelect v-model="periodModalMonth" :options="monthOptions" placeholder="Escolha o mes" />
+              <span class="field-label">Mês</span>
+              <AppSelect v-model="periodModalMonth" :options="monthOptions" placeholder="Escolha o mês" />
             </label>
           </div>
 
@@ -633,8 +803,33 @@ onBeforeUnmount(() => {
             <button class="primary-button" type="button" :disabled="isSubmitting" @click="savePeriod">
               Salvar
             </button>
-            <button class="secondary-button" type="button" :disabled="isSubmitting" @click="closePeriodModal">
+            <button class="danger-button" type="button" :disabled="isSubmitting" @click="closePeriodModal">
               Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isDeletePeriodModalOpen" class="modal-backdrop" @click="closeDeletePeriodModal">
+        <div class="modal-card narrow-mobile-modal" @click.stop>
+          <header class="modal-header">
+            <h2>Excluir mês</h2>
+            <p>Confirme a exclusão do período atual.</p>
+          </header>
+
+          <div class="modal-fields">
+            <div class="confirm-summary-card">
+              <span class="field-label">Período selecionado</span>
+              <strong>{{ selectedPeriod?.label || periodLabel }}</strong>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="secondary-button" type="button" :disabled="isSubmitting" @click="closeDeletePeriodModal">
+              Cancelar
+            </button>
+            <button class="danger-button" type="button" :disabled="isSubmitting" @click="confirmDeleteSelectedPeriod">
+              Excluir
             </button>
           </div>
         </div>
@@ -684,7 +879,6 @@ onBeforeUnmount(() => {
 
 .tittle {
   text-align: center;
-  margin: 12px 0 8px;
 }
 
 .status-card {
@@ -721,112 +915,106 @@ onBeforeUnmount(() => {
 }
 
 .primary-button,
-.secondary-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px 16px;
-  position: relative;
-  overflow: hidden;
-  border-radius: 16px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    transform 0.18s ease,
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease,
-    filter 0.18s ease,
-    opacity 0.18s ease;
+.secondary-button,
+.danger-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 11px 16px;
+	position: relative;
+	overflow: hidden;
+	border: 1px solid var(--theme-button-border);
+	border-radius: 18px;
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	outline: none;
+	appearance: none;
+	-webkit-appearance: none;
+	-webkit-tap-highlight-color: transparent;
+	transition:
+		transform 0.18s ease,
+		background 0.18s ease,
+		border-color 0.18s ease,
+		color 0.18s ease,
+		box-shadow 0.18s ease,
+		opacity 0.18s ease;
 }
 
 .primary-button {
-  border: 1px solid transparent;
-  background: var(--button-bg);
-  color: var(--button-text);
-  box-shadow: var(--button-shadow);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-bg);
+	color: var(--text-soft);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .secondary-button {
-  border: 1px solid var(--theme-button-border);
-  background: var(--theme-button-bg);
-  color: var(--text-h);
-}
-
-.primary-button:hover {
-  border-color: var(--theme-button-hover-border);
-  background: var(--button-hover);
-  color: var(--button-text);
-  box-shadow: var(--button-shadow-hover);
-  filter: saturate(1.06);
-}
-
-.primary-button:focus-visible,
-.secondary-button:focus-visible {
-  border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.primary-button:active:not(:disabled),
-.secondary-button:active:not(:disabled) {
-  transform: translateY(0);
-  border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.secondary-button:hover {
-  border-color: var(--theme-button-hover-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
-    var(--theme-button-hover-bg);
-  color: var(--text-h);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-bg);
+	color: var(--text-soft);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .primary-button:hover,
 .secondary-button:hover {
-  transform: translateY(-1px);
+	transform: translateY(-1px);
+	border-color: var(--theme-button-hover-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-hover-bg);
+	color: var(--text-h);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+	border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
+	transform: translateY(0);
+	border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .danger-button {
-  border-color: var(--danger-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
-    var(--danger-bg);
-  color: var(--danger-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	border-color: var(--danger-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-bg);
+	color: var(--danger-text);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .danger-button:hover {
-  border-color: var(--danger-border-strong);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
-    var(--danger-hover);
+	border-color: var(--danger-border-strong);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-hover);
 }
 
 .danger-button:focus-visible,
 .danger-button:active:not(:disabled) {
-  border-color: var(--danger-border-strong);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	border-color: var(--danger-border-strong);
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .primary-button:disabled,
-.secondary-button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-  transform: none;
+.secondary-button:disabled,
+.danger-button:disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
+	transform: none;
 }
 
 .button-icon {
@@ -875,6 +1063,19 @@ onBeforeUnmount(() => {
 .modal-fields {
   display: grid;
   gap: 14px;
+}
+
+.confirm-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--danger-border) 82%, var(--glass-border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--danger-bg) 72%, var(--glass-surface-strong));
+}
+
+.confirm-summary-card strong {
+  color: var(--text-h);
 }
 
 .field-group {

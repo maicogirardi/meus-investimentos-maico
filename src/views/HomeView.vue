@@ -59,7 +59,7 @@ function formatCurrency(value) {
             class="month-filter"
             :model-value="selectedMonth"
             :options="monthOptions"
-            placeholder="Mes"
+            placeholder="Mês"
             @update:model-value="$emit('update:month', $event)"
           />
         </div>
@@ -92,8 +92,8 @@ function formatCurrency(value) {
 
       <template v-else>
         <p class="eyebrow">Comece pela sua linha do tempo</p>
-        <strong>Nenhum mes criado</strong>
-        <span>Use o botao de adicionar para escolher o primeiro mes da carteira.</span>
+        <strong>Nenhum mês criado.</strong>
+        <span>Use o botão de adicionar para escolher o primeiro mês da carteira.</span>
       </template>
     </section>
   </section>
@@ -173,40 +173,127 @@ function formatCurrency(value) {
 }
 
 .filter-row button {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  padding: 0;
-  border-radius: 50%;
-  aspect-ratio: 1 / 1;
+	width: 48px;
+	height: 48px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 48px;
+	padding: 0;
+	border: 1px solid var(--theme-button-border);
+	border-radius: 50%;
+	aspect-ratio: 1 / 1;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-bg);
+	color: var(--text-soft);
+	cursor: pointer;
+	outline: none;
+	appearance: none;
+	-webkit-appearance: none;
+	-webkit-tap-highlight-color: transparent;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	transition:
+		transform 0.18s ease,
+		background 0.18s ease,
+		border-color 0.18s ease,
+		color 0.18s ease,
+		box-shadow 0.18s ease,
+		opacity 0.18s ease;
+}
+
+.filter-row button:hover {
+	transform: translateY(-1px);
+	border-color: var(--theme-button-hover-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-hover-bg);
+	color: var(--text-h);
+}
+
+.filter-row button:focus-visible {
+	border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.filter-row button:active:not(:disabled) {
+	transform: translateY(0);
+	border-color: color-mix(in srgb, var(--color-primary) 58%, var(--theme-button-hover-border));
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.filter-row button:disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
+	transform: none;
 }
 
 .filter-actions button {
-  color: var(--text-soft);
+	color: var(--text-soft);
 }
 
 .filter-actions button:hover {
-  color: var(--text-h);
+	color: var(--text-h);
+}
+
+.filter-row .danger-button,
+.filter-row .month-remove-button {
+	border-color: var(--danger-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-bg);
+	color: var(--danger-text);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.filter-row .danger-button:hover,
+.filter-row .month-remove-button:hover {
+	border-color: var(--danger-border-strong);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-hover);
+}
+
+.filter-row .danger-button:focus-visible,
+.filter-row .danger-button:active:not(:disabled),
+.filter-row .month-remove-button:focus-visible,
+.filter-row .month-remove-button:active:not(:disabled) {
+	border-color: var(--danger-border-strong);
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .filter-actions .danger-button,
 .filter-actions .month-remove-button {
-  color: var(--danger-text);
+	color: var(--danger-text);
 }
 
 .filter-actions button svg,
 .filter-actions button svg * {
-  fill: currentColor !important;
-  stroke: currentColor !important;
+	fill: currentColor !important;
+	stroke: currentColor !important;
+}
+
+.filter-actions button svg {
+	display: block;
+	width: 23px;
+	height: 23px;
+	margin: auto;
+	flex: 0 0 auto;
 }
 
 .filter-row button {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  padding: 0;
-  border-radius: 50%;
-  flex: 0 0 36px;
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	padding: 0;
+	border-radius: 50%;
+	flex: 0 0 36px;
 }
 
 .year-filter {
@@ -222,12 +309,8 @@ function formatCurrency(value) {
   height: 36px;
 }
 
-.month-remove-button {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-}
-
 .month-remove-button svg {
-  transform: translateX(1px);
+	transform: translateX(1px);
 }
 
 .portfolio-card {

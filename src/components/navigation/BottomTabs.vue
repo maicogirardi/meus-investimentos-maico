@@ -3,17 +3,20 @@ function getIconPaths(iconName) {
   switch (iconName) {
     case "wallet":
       return [
-        "M3.75 7.5A2.25 2.25 0 0 1 6 5.25h11.25A1.5 1.5 0 0 1 18.75 6.75v10.5A1.5 1.5 0 0 1 17.25 18.75H6A2.25 2.25 0 0 1 3.75 16.5v-9Z",
-        "M3.75 8.25h13.5",
-        "M15.75 12h3",
-        "M16.875 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z",
+        "M6.75 6.75h10.5",
+        "M6.75 12h10.5",
+        "M6.75 17.25h10.5",
+        "M4.5 6.75h.75",
+        "M4.5 12h.75",
+        "M4.5 17.25h.75",
       ];
     case "grid":
       return [
-        "M4.5 4.5h6v6h-6z",
-        "M13.5 4.5h6v6h-6z",
-        "M4.5 13.5h6v6h-6z",
-        "M13.5 13.5h6v6h-6z",
+        "M4.5 18.75h15",
+        "M6.75 16.5 10.5 12.75 13.5 14.25 18 9.75",
+        "M15.75 9.75H18v2.25",
+        "M7.5 6.75v3",
+        "M6 8.25h3",
       ];
     case "settings":
       return [
@@ -45,7 +48,7 @@ defineEmits(["select"]);
 </script>
 
 <template>
-  <nav class="bottom-tabs" aria-label="Navegacao principal">
+  <nav class="bottom-tabs" aria-label="Navegação principal">
     <button
       v-for="tab in tabs"
       :key="tab.value"
