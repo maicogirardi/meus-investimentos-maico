@@ -75,8 +75,12 @@ function formatCurrency(value) {
           </button>
 
           <button class="danger-button month-remove-button" :disabled="isSubmitting || !hasSelectedPeriod" type="button" @click="$emit('delete-month')">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.29 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z" />
+            <svg class="delete-icon-svg" width="26" height="26" viewBox="124 86 10 16" aria-hidden="true">
+              <path
+                d="M 126.81 89.11 L 126.81 87.61 C 126.81 87.058 127.258 86.61 127.81 86.61 L 130.81 86.61 C 131.362 86.61 131.81 87.058 131.81 87.61 L 131.81 89.11 L 124.81 89.11 L 124.918 89.901 L 133.702 89.901 L 133.81 89.11 Z M 132.31 99.11 C 132.283 99.643 131.843 100.061 131.31 100.06 L 127.31 100.06 C 126.777 100.061 126.337 99.643 126.31 99.11 L 125.036 90.767 L 133.584 90.767 Z M 130.627 98.807 L 131.493 98.807 L 131.493 91.978 L 130.627 91.978 Z M 128.902 98.807 L 129.768 98.807 L 129.768 91.978 L 128.902 91.978 Z M 127.204 98.807 L 128.07 98.807 L 128.07 91.978 L 127.204 91.978 Z"
+                fill="currentColor"
+                style="stroke-width: 1;"
+              />
             </svg>
           </button>
         </div>
@@ -279,6 +283,12 @@ function formatCurrency(value) {
 	stroke: currentColor !important;
 }
 
+.filter-actions .delete-icon-svg,
+.filter-actions .delete-icon-svg * {
+	fill: currentColor !important;
+	stroke: none !important;
+}
+
 .filter-actions button svg {
 	display: block;
 	width: 23px;
@@ -310,7 +320,7 @@ function formatCurrency(value) {
 }
 
 .month-remove-button svg {
-	transform: translateX(1px);
+	transform: none;
 }
 
 .portfolio-card {
@@ -479,7 +489,7 @@ function formatCurrency(value) {
   .month-remove-button svg {
     width: 15px;
     height: 15px;
-    transform: translateX(1px);
+    transform: none;
   }
 
   .portfolio-card {
@@ -547,7 +557,7 @@ function formatCurrency(value) {
   }
 
   .month-remove-button svg {
-    transform: translateX(1px);
+    transform: none;
   }
 }
 </style>

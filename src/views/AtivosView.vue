@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 
 const props = defineProps({
 	assets: {
@@ -24,33 +24,77 @@ const props = defineProps({
 	},
 });
 
-const emit = defineEmits(["create-asset", "delete-asset"]);
+const emit = defineEmits(["create-asset", "update-asset", "delete-asset"]);
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+	style: "currency",
+	currency: "BRL",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
 
 const isCreateModalOpen = ref(false);
-const isCreatePending = ref(false);
+const pendingSubmitMode = ref("");
+const editingAssetId = ref("");
+const activeCalculatorField = ref("");
+const calculatorExpression = ref("");
+const calculatorError = ref("");
+const calculatorExpressionInputRef = ref(null);
+const assetInitialValueInput = ref(formatCurrency(0));
+const touchedFields = reactive({
+	name: false,
+	startDate: false,
+	initialValue: false,
+});
 const assetForm = reactive({
 	name: "",
 	institution: "",
 	category: "",
 	startDate: "",
-	initialValue: "",
+	initialValue: 0,
 });
 
 const summary = computed(() => ({
 	count: props.assets.length,
 	totalInitialValue: props.assets.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
 }));
+const isEditingAsset = computed(() => Boolean(editingAssetId.value));
+const modalTitle = computed(() => (isEditingAsset.value ? "Editar ativo" : "Novo ativo"));
+const submitButtonLabel = computed(() => (isEditingAsset.value ? "Salvar alterações" : "Salvar ativo"));
+const isNameMissing = computed(() => touchedFields.name && !assetForm.name.trim());
+const isStartDateMissing = computed(() => touchedFields.startDate && !assetForm.startDate);
+const isInitialValueMissing = computed(() => touchedFields.initialValue && assetForm.initialValue <= 0);
+const calculatorPreviewText = computed(() => {
+	if (!calculatorExpression.value.trim()) {
+		return "Resultado: R$ 0,00";
+	}
+
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			return "Resultado: valor negativo";
+		}
+
+		return `Resultado: ${formatCurrency(result)}`;
+	} catch {
+		return "Resultado: calculando...";
+	}
+});
 
 watch(
-	() => props.assets.length,
-	(nextCount, previousCount) => {
-		if (!isCreatePending.value || nextCount <= previousCount) {
+	() => props.isSubmitting,
+	(isSubmitting, wasSubmitting) => {
+		if (!wasSubmitting || isSubmitting || !pendingSubmitMode.value) {
 			return;
 		}
 
-		isCreatePending.value = false;
-		isCreateModalOpen.value = false;
-		resetForm();
+		if (props.errorMessage) {
+			pendingSubmitMode.value = "";
+			return;
+		}
+
+		finalizeModalClose();
 	},
 );
 
@@ -58,16 +102,13 @@ watch(
 	() => props.errorMessage,
 	(value) => {
 		if (value) {
-			isCreatePending.value = false;
+			pendingSubmitMode.value = "";
 		}
 	},
 );
 
 function formatCurrency(value) {
-	return new Intl.NumberFormat("pt-BR", {
-		style: "currency",
-		currency: "BRL",
-	}).format(Number(value || 0));
+	return currencyFormatter.format(Number(value || 0));
 }
 
 function formatDate(value) {
@@ -83,16 +124,224 @@ function formatDate(value) {
 	return new Intl.DateTimeFormat("pt-BR").format(new Date(Number(year), Number(month) - 1, Number(day)));
 }
 
+function normalizeCurrencyText(value) {
+	const raw = String(value ?? "").replace("R$ ", "");
+	const sanitized = raw.replace(/[^\d,]/g, "");
+	const firstCommaIndex = sanitized.indexOf(",");
+
+	if (firstCommaIndex < 0) {
+		return sanitized.replace(/^0+(?=\d)/, "");
+	}
+
+	const integerPart = sanitized.slice(0, firstCommaIndex).replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "");
+	const decimalPart = sanitized.slice(firstCommaIndex + 1).replace(/[^\d]/g, "").slice(0, 2);
+
+	return `${integerPart || "0"},${decimalPart}`;
+}
+
+function parseCurrencyInput(value) {
+	const normalized = normalizeCurrencyText(value);
+	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
+	const integerValue = Number(integerPart || "0");
+	const fractionValue = Number(decimalPart.padEnd(2, "0") || "0");
+	return integerValue + fractionValue / 100;
+}
+
+function normalizeCalculatorExpression(value) {
+	return String(value ?? "")
+		.replace(/\s+/g, "")
+		.replace(/,/g, ".");
+}
+
+function tokenizeCalculatorExpression(expression) {
+	const tokens = [];
+	let index = 0;
+
+	while (index < expression.length) {
+		const character = expression[index];
+
+		if ("+-*/()".includes(character)) {
+			tokens.push(character);
+			index += 1;
+			continue;
+		}
+
+		if (/\d|\./.test(character)) {
+			let numberToken = character;
+			index += 1;
+
+			while (index < expression.length && /[\d.]/.test(expression[index])) {
+				numberToken += expression[index];
+				index += 1;
+			}
+
+			if (!/^\d+(\.\d+)?$|^\.\d+$/.test(numberToken)) {
+				throw new Error("Use apenas números e uma casa decimal por valor.");
+			}
+
+			tokens.push(numberToken);
+			continue;
+		}
+
+		throw new Error("Use apenas números, parênteses e + - * /.");
+	}
+
+	return tokens;
+}
+
+function evaluateCalculatorExpression(expression) {
+	const normalized = normalizeCalculatorExpression(expression);
+
+	if (!normalized) {
+		throw new Error("Digite uma fórmula para calcular.");
+	}
+
+	const tokens = tokenizeCalculatorExpression(normalized);
+	let currentIndex = 0;
+
+	function parseExpression() {
+		let value = parseTerm();
+
+		while (tokens[currentIndex] === "+" || tokens[currentIndex] === "-") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseTerm();
+			value = operator === "+" ? value + nextValue : value - nextValue;
+		}
+
+		return value;
+	}
+
+	function parseTerm() {
+		let value = parseFactor();
+
+		while (tokens[currentIndex] === "*" || tokens[currentIndex] === "/") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseFactor();
+
+			if (operator === "/") {
+				if (nextValue === 0) {
+					throw new Error("Não é possível dividir por zero.");
+				}
+
+				value /= nextValue;
+				continue;
+			}
+
+			value *= nextValue;
+		}
+
+		return value;
+	}
+
+	function parseFactor() {
+		const token = tokens[currentIndex];
+
+		if (token === "+") {
+			currentIndex += 1;
+			return parseFactor();
+		}
+
+		if (token === "-") {
+			currentIndex += 1;
+			return -parseFactor();
+		}
+
+		if (token === "(") {
+			currentIndex += 1;
+			const value = parseExpression();
+
+			if (tokens[currentIndex] !== ")") {
+				throw new Error("Feche os parênteses da fórmula.");
+			}
+
+			currentIndex += 1;
+			return value;
+		}
+
+		if (token == null) {
+			throw new Error("Fórmula incompleta.");
+		}
+
+		const numericValue = Number(token);
+		if (!Number.isFinite(numericValue)) {
+			throw new Error("Fórmula inválida.");
+		}
+
+		currentIndex += 1;
+		return numericValue;
+	}
+
+	const result = parseExpression();
+
+	if (currentIndex !== tokens.length) {
+		throw new Error("Fórmula inválida.");
+	}
+
+	if (!Number.isFinite(result)) {
+		throw new Error("Não foi possível calcular esse valor.");
+	}
+
+	return result;
+}
+
+function resetTouchedFields() {
+	touchedFields.name = false;
+	touchedFields.startDate = false;
+	touchedFields.initialValue = false;
+}
+
+function setCurrencyInput(value) {
+	assetForm.initialValue = Number(value ?? 0);
+	assetInitialValueInput.value = formatCurrency(assetForm.initialValue);
+}
+
+function closeCalculator() {
+	activeCalculatorField.value = "";
+	calculatorExpression.value = "";
+	calculatorError.value = "";
+}
+
+function formatCalculatorInitialValue(value) {
+	const numericValue = Number(value ?? 0);
+	if (!Number.isFinite(numericValue)) {
+		return "";
+	}
+
+	return numericValue.toFixed(2).replace(".", ",");
+}
+
 function resetForm() {
 	assetForm.name = "";
 	assetForm.institution = "";
 	assetForm.category = "";
 	assetForm.startDate = "";
-	assetForm.initialValue = "";
+	setCurrencyInput(0);
+	editingAssetId.value = "";
+	resetTouchedFields();
+	closeCalculator();
+}
+
+function finalizeModalClose() {
+	pendingSubmitMode.value = "";
+	isCreateModalOpen.value = false;
+	resetForm();
 }
 
 function openCreateModal() {
 	resetForm();
+	isCreateModalOpen.value = true;
+}
+
+function openEditModal(asset) {
+	resetForm();
+	editingAssetId.value = asset.id || "";
+	assetForm.name = String(asset.name || "");
+	assetForm.institution = String(asset.institution || "");
+	assetForm.category = String(asset.category || "");
+	assetForm.startDate = String(asset.startDate || "");
+	setCurrencyInput(Number(asset.initialValue || 0));
 	isCreateModalOpen.value = true;
 }
 
@@ -101,24 +350,181 @@ function closeCreateModal() {
 		return;
 	}
 
-	isCreatePending.value = false;
-	isCreateModalOpen.value = false;
+	finalizeModalClose();
 }
 
-function submitAsset() {
-	const initialValue = Number(assetForm.initialValue);
-	if (!assetForm.name.trim() || !assetForm.startDate || !Number.isFinite(initialValue) || initialValue <= 0) {
+function markFieldTouched(fieldName) {
+	touchedFields[fieldName] = true;
+}
+
+function markRequiredFieldsTouched() {
+	touchedFields.name = true;
+	touchedFields.startDate = true;
+	touchedFields.initialValue = true;
+}
+
+function hasFormErrors() {
+	return !assetForm.name.trim() || !assetForm.startDate || assetForm.initialValue <= 0;
+}
+
+function syncCurrencyInput(event) {
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
+	const rawValue = target?.value ?? "";
+	const normalizedInput = normalizeCurrencyText(rawValue);
+	const parsedValue = parseCurrencyInput(normalizedInput);
+	const displayValue = normalizedInput ? `R$ ${normalizedInput}` : "R$ ";
+
+	assetForm.initialValue = parsedValue;
+	assetInitialValueInput.value = displayValue;
+	markFieldTouched("initialValue");
+
+	if (target && target.value !== displayValue) {
+		target.value = displayValue;
+	}
+}
+
+function handleCurrencyInput(event) {
+	if (activeCalculatorField.value === "initialValue") {
+		calculatorExpression.value = "";
+		calculatorError.value = "";
+	}
+
+	syncCurrencyInput(event);
+}
+
+function toggleCalculator() {
+	if (activeCalculatorField.value === "initialValue") {
+		closeCalculator();
 		return;
 	}
 
-	emit("create-asset", {
+	activeCalculatorField.value = "initialValue";
+	calculatorExpression.value = formatCalculatorInitialValue(assetForm.initialValue);
+	calculatorError.value = "";
+
+	void nextTick(() => {
+		const input = calculatorExpressionInputRef.value;
+		input?.focus?.();
+
+		if (input instanceof HTMLInputElement) {
+			if (input.value === "0,00") {
+				input.select();
+				return;
+			}
+
+			const caretPosition = input.value.length;
+			input.setSelectionRange(caretPosition, caretPosition);
+		}
+	});
+}
+
+function applyCalculatorResult() {
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			calculatorError.value = "O resultado precisa ser zero ou maior.";
+			return;
+		}
+
+		setCurrencyInput(result);
+		markFieldTouched("initialValue");
+		closeCalculator();
+	} catch (error) {
+		calculatorError.value = error instanceof Error ? error.message : "Não foi possível calcular.";
+	}
+}
+
+function handleCalculatorExpressionKeydown(event) {
+	if (event.key === "Enter") {
+		event.preventDefault();
+		event.stopPropagation();
+		applyCalculatorResult();
+		return;
+	}
+
+	if (event.key !== "Escape") {
+		return;
+	}
+
+	event.preventDefault();
+	event.stopPropagation();
+	closeCalculator();
+}
+
+function handleInitialValueFocus(event) {
+	const target = event?.target;
+
+	if (assetForm.initialValue === 0) {
+		assetInitialValueInput.value = "R$ ";
+
+		if (target instanceof HTMLInputElement) {
+			target.value = "R$ ";
+			requestAnimationFrame(() => {
+				target.setSelectionRange(target.value.length, target.value.length);
+			});
+		}
+	}
+}
+
+function handleInitialValueBlur() {
+	markFieldTouched("initialValue");
+	setCurrencyInput(assetForm.initialValue);
+}
+
+function handleCurrencyKeydown(event) {
+	const allowedKeys = [
+		"Backspace",
+		"Delete",
+		"Tab",
+		"Enter",
+		"Escape",
+		"ArrowLeft",
+		"ArrowRight",
+		"ArrowUp",
+		"ArrowDown",
+		"Home",
+		"End",
+	];
+
+	if (
+		event.ctrlKey ||
+		event.metaKey ||
+		allowedKeys.includes(event.key) ||
+		/^\d$/.test(event.key) ||
+		event.key === ","
+	) {
+		return;
+	}
+
+	event.preventDefault();
+}
+
+function submitAsset() {
+	markRequiredFieldsTouched();
+	if (hasFormErrors()) {
+		return;
+	}
+
+	const payload = {
 		name: assetForm.name,
 		institution: assetForm.institution,
 		category: assetForm.category,
 		startDate: assetForm.startDate,
-		initialValue,
-	});
-	isCreatePending.value = true;
+		initialValue: assetForm.initialValue,
+	};
+
+	if (isEditingAsset.value) {
+		emit("update-asset", {
+			id: editingAssetId.value,
+			...payload,
+		});
+		pendingSubmitMode.value = "edit";
+		return;
+	}
+
+	emit("create-asset", payload);
+	pendingSubmitMode.value = "create";
 }
 
 function isKeyboardShortcutTargetBlocked() {
@@ -147,6 +553,12 @@ function handleModalKeydown(event) {
 
 	if (event.key === "Escape") {
 		event.preventDefault();
+
+		if (activeCalculatorField.value === "initialValue") {
+			closeCalculator();
+			return;
+		}
+
 		closeCreateModal();
 		return;
 	}
@@ -172,11 +584,8 @@ onBeforeUnmount(() => {
 	<section class="assets-view">
 		<section class="hero-card">
 			<div class="hero-copy">
-				<p class="eyebrow">Cadastro mestre</p>
+				<p class="eyebrow">Cadastro</p>
 				<h2>Adicionar ativos</h2>
-				<p class="hero-text">
-					Cadastre cada ativo uma vez e o app já abre o estado mensal inicial no período selecionado.
-				</p>
 			</div>
 
 			<div class="hero-side">
@@ -200,13 +609,11 @@ onBeforeUnmount(() => {
 			<article class="summary-card">
 				<span class="summary-label">Ativos cadastrados</span>
 				<strong>{{ summary.count }}</strong>
-				<p>Base principal da carteira pronta para leituras, aportes e saques.</p>
 			</article>
 
 			<article class="summary-card">
 				<span class="summary-label">Capital inicial somado</span>
 				<strong>{{ formatCurrency(summary.totalInitialValue) }}</strong>
-				<p>Valor de partida usado para abrir cada estado mensal inicial.</p>
 			</article>
 		</section>
 
@@ -221,11 +628,40 @@ onBeforeUnmount(() => {
 							<p>{{ formatCurrency(asset.initialValue) }}</p>
 						</div>
 
-						<button class="danger-button icon-button" type="button" :disabled="isSubmitting" @click="$emit('delete-asset', asset)">
-							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<path d="M6 7h12M9.5 7V5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7m-7 0 .5 11a1 1 0 0 0 1 .95h6a1 1 0 0 0 1-.95L16.5 7" />
-							</svg>
-						</button>
+						<div class="asset-actions">
+							<button
+								class="icon-button asset-action-button asset-action-button-edit"
+								type="button"
+								aria-label="Editar ativo"
+								:disabled="isSubmitting"
+								@click="openEditModal(asset)"
+							>
+								<span class="button-icon button-icon-edit" aria-hidden="true">
+									<svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+										<path d="m4 20 4.2-1 9.5-9.5a2.12 2.12 0 1 0-3-3L5.2 16 4 20Z" />
+										<path d="m13.5 7.5 3 3" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+									</svg>
+								</span>
+							</button>
+
+							<button
+								class="danger-button icon-button asset-action-button asset-action-button-delete"
+								type="button"
+								aria-label="Excluir ativo"
+								:disabled="isSubmitting"
+								@click="$emit('delete-asset', asset)"
+							>
+								<span class="button-icon button-icon-delete" aria-hidden="true">
+									<svg class="delete-icon-svg" width="26" height="26" viewBox="124 86 10 16" aria-hidden="true">
+										<path
+											d="M 126.81 89.11 L 126.81 87.61 C 126.81 87.058 127.258 86.61 127.81 86.61 L 130.81 86.61 C 131.362 86.61 131.81 87.058 131.81 87.61 L 131.81 89.11 L 124.81 89.11 L 124.918 89.901 L 133.702 89.901 L 133.81 89.11 Z M 132.31 99.11 C 132.283 99.643 131.843 100.061 131.31 100.06 L 127.31 100.06 C 126.777 100.061 126.337 99.643 126.31 99.11 L 125.036 90.767 L 133.584 90.767 Z M 130.627 98.807 L 131.493 98.807 L 131.493 91.978 L 130.627 91.978 Z M 128.902 98.807 L 129.768 98.807 L 129.768 91.978 L 128.902 91.978 Z M 127.204 98.807 L 128.07 98.807 L 128.07 91.978 L 127.204 91.978 Z"
+											fill="currentColor"
+											style="stroke-width: 1;"
+										/>
+									</svg>
+								</span>
+							</button>
+						</div>
 					</div>
 
 					<div class="asset-tags">
@@ -248,52 +684,124 @@ onBeforeUnmount(() => {
 		<div v-if="isCreateModalOpen" class="modal-backdrop" @click="closeCreateModal">
 			<div class="modal-card" @click.stop>
 				<header class="modal-header">
-					<h2>Novo ativo</h2>
+					<h2>{{ modalTitle }}</h2>
 					<p>Os campos obrigatórios são nome, data inicial e valor inicial.</p>
 				</header>
 
 				<div class="modal-grid">
-					<label class="field-group field-group-full">
-						<span class="field-label">Nome do ativo</span>
-						<input v-model.trim="assetForm.name" class="text-input" type="text" maxlength="80" placeholder="Ex.: CDB Itaú 100% CDI" />
-					</label>
-
-					<label class="field-group">
-						<span class="field-label">Instituição</span>
-						<input v-model.trim="assetForm.institution" class="text-input" type="text" maxlength="50" placeholder="Ex.: Itaú" />
-					</label>
-
-					<label class="field-group">
-						<span class="field-label">Categoria</span>
-						<input v-model.trim="assetForm.category" class="text-input" type="text" maxlength="40" placeholder="Ex.: CDB" />
-					</label>
-
-					<label class="field-group">
-						<span class="field-label">Data inicial</span>
-						<input v-model="assetForm.startDate" class="text-input" type="date" />
-					</label>
-
-					<label class="field-group">
-						<span class="field-label">Valor inicial</span>
+					<div class="field-group field-group-full">
+						<label class="field-label" for="asset-name">Nome do ativo</label>
 						<input
-							v-model.number="assetForm.initialValue"
-							class="text-input"
-							type="number"
-							min="0.01"
-							step="0.01"
-							inputmode="decimal"
-							placeholder="0,00"
+							id="asset-name"
+							v-model.trim="assetForm.name"
+							:class="['text-input', { 'required-empty': isNameMissing }]"
+							type="text"
+							maxlength="80"
+							placeholder="Ex.: CDB Itaú 100% CDI"
+							@blur="markFieldTouched('name')"
 						/>
-					</label>
+						<div v-if="isNameMissing" class="error-text">Informe o nome do ativo.</div>
+					</div>
+
+					<div class="field-group">
+						<label class="field-label" for="asset-institution">Instituição</label>
+						<input
+							id="asset-institution"
+							v-model.trim="assetForm.institution"
+							class="text-input"
+							type="text"
+							maxlength="50"
+							placeholder="Ex.: Itaú"
+						/>
+					</div>
+
+					<div class="field-group">
+						<label class="field-label" for="asset-category">Categoria</label>
+						<input
+							id="asset-category"
+							v-model.trim="assetForm.category"
+							class="text-input"
+							type="text"
+							maxlength="40"
+							placeholder="Ex.: CDB"
+						/>
+					</div>
+
+					<div class="field-group">
+						<label class="field-label" for="asset-start-date">Data inicial</label>
+						<input
+							id="asset-start-date"
+							v-model="assetForm.startDate"
+							:class="['text-input', { 'required-empty': isStartDateMissing }]"
+							type="date"
+							@blur="markFieldTouched('startDate')"
+						/>
+						<div v-if="isStartDateMissing" class="error-text">Informe a data inicial.</div>
+					</div>
+
+					<div class="field-group">
+						<label class="field-label" for="asset-initial-value">Valor inicial</label>
+						<div class="currency-input-group">
+							<div class="currency-input-shell">
+								<input
+									id="asset-initial-value"
+									:value="assetInitialValueInput"
+									:class="['text-input', { 'required-empty': isInitialValueMissing }]"
+									type="text"
+									inputmode="decimal"
+									placeholder="R$ 0,00"
+									@keydown="handleCurrencyKeydown($event)"
+									@focus="handleInitialValueFocus($event)"
+									@input="handleCurrencyInput($event)"
+									@blur="handleInitialValueBlur"
+								/>
+								<button
+									type="button"
+									class="calculator-toggle"
+									:class="{ 'is-open': activeCalculatorField === 'initialValue' }"
+									aria-label="Abrir calculadora"
+									@click="toggleCalculator"
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M7 3.75h10A2.25 2.25 0 0 1 19.25 6v12A2.25 2.25 0 0 1 17 20.25H7A2.25 2.25 0 0 1 4.75 18V6A2.25 2.25 0 0 1 7 3.75Z" />
+										<path d="M8 7.5h8M8.75 11.25h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5" />
+									</svg>
+								</button>
+
+								<div v-if="activeCalculatorField === 'initialValue'" class="calculator-popover">
+									<label class="field-label" for="asset-calculator-input">Fórmula</label>
+									<div class="calculator-preview" aria-live="polite">{{ calculatorPreviewText }}</div>
+									<input
+										id="asset-calculator-input"
+										ref="calculatorExpressionInputRef"
+										v-model="calculatorExpression"
+										class="text-input"
+										type="text"
+										inputmode="decimal"
+										placeholder="Ex.: 450*3,5"
+										@keydown="handleCalculatorExpressionKeydown"
+									/>
+									<div v-if="calculatorError" class="error-text">{{ calculatorError }}</div>
+									<div class="calculator-popover-actions">
+										<button type="button" class="secondary-button" @click="closeCalculator">
+											Cancelar
+										</button>
+										<button type="button" class="primary-button calculator-apply-button" @click="applyCalculatorResult">
+											Aplicar
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div v-if="isInitialValueMissing" class="error-text">Informe um valor inicial maior que zero.</div>
+					</div>
 				</div>
 
-				<p class="modal-note">
-					O estado mensal inicial será criado em <strong>{{ selectedPeriodLabel || "um período ativo" }}</strong>.
-				</p>
+				<p class="field-note modal-note">O estado mensal inicial será criado em Abril de 2026.</p>
 
 				<div class="modal-actions">
 					<button class="primary-button" type="button" :disabled="isSubmitting" @click="submitAsset">
-						Salvar ativo
+						{{ submitButtonLabel }}
 					</button>
 					<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeCreateModal">
 						Cancelar
@@ -335,12 +843,8 @@ onBeforeUnmount(() => {
 
 .hero-copy {
 	display: grid;
-	gap: 8px;
-}
-
-.hero-text {
-	max-width: 56ch;
-	color: var(--text);
+	gap: 6px;
+	align-content: center;
 }
 
 .hero-side {
@@ -386,7 +890,7 @@ onBeforeUnmount(() => {
 
 .summary-card {
 	display: grid;
-	gap: 8px;
+	gap: 10px;
 	padding: 18px;
 }
 
@@ -395,10 +899,6 @@ onBeforeUnmount(() => {
 	line-height: 1;
 	letter-spacing: -0.05em;
 	color: var(--text-h);
-}
-
-.summary-card p {
-	color: var(--text);
 }
 
 .feedback-error {
@@ -445,6 +945,69 @@ onBeforeUnmount(() => {
 
 .asset-title-block p {
 	color: var(--text);
+}
+
+.asset-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.asset-action-button {
+	width: 38px;
+	height: 38px;
+	padding: 0;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 14px;
+}
+
+.asset-action-button-edit {
+	border-color: color-mix(in srgb, var(--color-primary) 46%, var(--glass-border-strong));
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 18%, var(--glass-surface-strong));
+	color: color-mix(in srgb, var(--color-primary) 62%, white);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.asset-action-button-edit:hover {
+	border-color: color-mix(in srgb, var(--color-primary) 62%, var(--glass-border-strong));
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 22%, var(--glass-surface-strong));
+	color: color-mix(in srgb, var(--color-primary) 42%, white);
+}
+
+.asset-action-button-edit:focus-visible {
+	border-color: color-mix(in srgb, var(--color-primary) 62%, var(--glass-border-strong));
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.asset-action-button-delete {
+	border-color: var(--danger-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-bg);
+	color: var(--danger-text);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.asset-action-button-delete:hover {
+	border-color: var(--danger-border-strong);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-hover);
+	color: var(--danger-text);
+}
+
+.asset-action-button-delete:focus-visible {
+	border-color: var(--danger-border-strong);
+	box-shadow:
+		0 0 0 2px color-mix(in srgb, var(--danger-text) 14%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .asset-tags {
@@ -592,6 +1155,54 @@ onBeforeUnmount(() => {
 	stroke-linejoin: round;
 }
 
+.button-icon-delete {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 26px;
+	height: 26px;
+}
+
+.delete-icon-svg {
+	display: block;
+	width: 26px;
+	height: 26px;
+	flex: 0 0 26px;
+	margin: 0 auto;
+}
+
+.delete-icon-svg,
+.delete-icon-svg * {
+	fill: currentColor !important;
+	stroke: none !important;
+}
+
+.button-icon svg {
+	color: currentColor;
+}
+
+.button-icon svg[fill="white"],
+.button-icon svg [fill="white"] {
+	fill: currentColor;
+}
+
+.button-icon svg [stroke="white"] {
+	stroke: currentColor;
+}
+
+.button-icon-edit {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 26px;
+	height: 26px;
+}
+
+.icon-button svg.fill-icon {
+	stroke: none;
+	fill: currentColor;
+}
+
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
@@ -647,14 +1258,158 @@ onBeforeUnmount(() => {
 	padding: 10px 14px;
 	border: 1px solid var(--input-border);
 	border-radius: 14px;
+	box-sizing: border-box;
 	background: var(--input-surface);
 	color: var(--input-text);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 	outline: none;
+	transition:
+		border-color 0.18s ease,
+		box-shadow 0.18s ease,
+		background-color 0.18s ease,
+		color 0.18s ease;
+}
+
+.text-input::placeholder {
+	color: var(--input-placeholder);
 }
 
 .text-input:focus-visible {
 	border-color: var(--input-focus-border);
-	box-shadow: 0 0 0 4px var(--input-focus-ring);
+	box-shadow:
+		0 0 0 3px var(--input-focus-ring),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.text-input:disabled {
+	cursor: not-allowed;
+	background: var(--input-disabled-bg);
+	color: var(--text-soft);
+	opacity: 0.88;
+}
+
+.text-input[type="date"]::-webkit-calendar-picker-indicator {
+	cursor: pointer;
+	filter: opacity(0.72);
+}
+
+.required-empty {
+	background: var(--validation-error-bg);
+	border: 1px solid var(--validation-error-border) !important;
+	box-shadow: 0 0 0 2px var(--validation-error-ring);
+}
+
+.required-empty::placeholder {
+	color: var(--validation-error-text);
+	font-style: italic;
+}
+
+.field-group:has(.required-empty) .field-label {
+	color: var(--validation-error-text);
+}
+
+.required-empty:focus-visible {
+	border-color: var(--validation-error-border);
+	box-shadow:
+		0 0 0 3px var(--validation-error-ring),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.field-note {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--text-soft);
+}
+
+.error-text {
+	color: var(--validation-error-text);
+	font-size: 13px;
+}
+
+.currency-input-group {
+	display: block;
+}
+
+.currency-input-shell {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.currency-input-shell input {
+	padding-right: 54px;
+}
+
+.calculator-toggle {
+	position: absolute;
+	top: 50%;
+	right: 12px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	transform: translateY(-50%);
+	color: color-mix(in srgb, var(--input-text) 72%, transparent);
+}
+
+.calculator-toggle:hover,
+.calculator-toggle.is-open {
+	transform: translateY(-50%);
+	color: var(--text-h);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.calculator-toggle svg {
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.calculator-popover {
+	position: absolute;
+	bottom: calc(100% + 10px);
+	left: 50%;
+	z-index: 30;
+	display: grid;
+	gap: 8px;
+	width: min(320px, calc(100vw - 56px));
+	padding: 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 18px;
+	background:
+		linear-gradient(180deg, var(--glass-highlight) 0%, transparent 100%),
+		var(--glass-surface-strong);
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(22px);
+	transform: translateX(-50%);
+}
+
+.calculator-preview {
+	padding-top: 2px;
+	padding-bottom: 2px;
+	border-top: 1px solid color-mix(in srgb, var(--glass-border-strong) 88%, transparent);
+	color: color-mix(in srgb, var(--text-soft) 78%, #000);
+	font-size: 13px;
+	font-style: italic;
+}
+
+.calculator-popover-actions {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 10px;
+}
+
+.calculator-apply-button {
+	min-width: 96px;
 }
 
 .modal-actions {
@@ -687,6 +1442,15 @@ onBeforeUnmount(() => {
 		grid-template-columns: 1fr;
 	}
 
+	.asset-header {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.asset-actions {
+		justify-content: flex-end;
+	}
+
 	.modal-backdrop {
 		padding: 14px;
 		align-items: end;
@@ -696,6 +1460,13 @@ onBeforeUnmount(() => {
 		width: 100%;
 		padding: 18px;
 		border-radius: 22px;
+	}
+
+	.calculator-popover {
+		left: 0;
+		right: 0;
+		width: auto;
+		transform: none;
 	}
 
 	.modal-actions {

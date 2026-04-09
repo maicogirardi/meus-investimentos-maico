@@ -109,7 +109,7 @@ Campos criados hoje no estado mensal inicial:
 
 `Ativos` hoje:
 
-* já está funcional para cadastro e exclusão
+* já está funcional para cadastro, edição e exclusão
 * lista nome, valor inicial, instituição, categoria e data inicial
 
 `Configurações` hoje:
@@ -148,8 +148,8 @@ Escopo-alvo por tela:
 
 `Ativos`
 
-* continuar como cadastro mestre
-* evoluir para edição quando necessário
+* continuar como cadastro
+* manter edição no mesmo fluxo modal quando necessário
 
 `Configurações`
 

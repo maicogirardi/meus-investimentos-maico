@@ -110,6 +110,66 @@ export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	return assetRef.id;
 }
 
+export async function updateAssetWithInitialMonthlyState(uid, assetId, assetInput) {
+	const db = getFirebaseDb();
+	if (!db || !uid || !assetId) {
+		throw new Error("Não foi possível atualizar o ativo.");
+	}
+
+	const name = normalizeText(assetInput.name);
+	const startDate = normalizeText(assetInput.startDate);
+	const institution = normalizeText(assetInput.institution);
+	const category = normalizeText(assetInput.category);
+	const initialValue = normalizeAmount(assetInput.initialValue);
+
+	if (!name || !startDate || initialValue <= 0) {
+		throw new Error("Dados do ativo inválidos.");
+	}
+
+	const timestamp = serverTimestamp();
+	const assetRef = doc(db, "users", uid, "assets", assetId);
+	const batch = writeBatch(db);
+	const monthlyStatesSnapshot = await getDocs(
+		query(collection(db, "users", uid, "assetMonthlyStates"), where("assetId", "==", assetId)),
+	);
+
+	batch.update(assetRef, {
+		name,
+		startDate,
+		initialValue,
+		institution,
+		category,
+		updatedAt: timestamp,
+	});
+
+	const initialMonthlyStateDoc = monthlyStatesSnapshot.docs
+		.sort((leftDoc, rightDoc) => {
+			const leftPeriodId = normalizeText(leftDoc.data()?.periodId || leftDoc.id);
+			const rightPeriodId = normalizeText(rightDoc.data()?.periodId || rightDoc.id);
+			return leftPeriodId.localeCompare(rightPeriodId, "pt-BR");
+		})[0];
+
+	const initialMonthlyStateRef = initialMonthlyStateDoc?.ref;
+
+	if (initialMonthlyStateRef) {
+		batch.set(
+			initialMonthlyStateRef,
+			{
+				openingCapitalInvested: initialValue,
+				currentCapitalInvested: initialValue,
+				openingLiquidBalance: initialValue,
+				currentLiquidBalance: initialValue,
+				openingGrossBalance: initialValue,
+				currentGrossBalance: initialValue,
+				updatedAt: timestamp,
+			},
+			{ merge: true },
+		);
+	}
+
+	await batch.commit();
+}
+
 export async function deleteAssetCascade(uid, assetId) {
 	const db = getFirebaseDb();
 	if (!db || !uid || !assetId) {
