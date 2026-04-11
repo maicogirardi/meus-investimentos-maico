@@ -61,6 +61,7 @@ const submitButtonLabel = computed(() => (isEditingAsset.value ? "Salvar alteraÃ
 const isNameMissing = computed(() => shouldShowValidation.value && !assetForm.name.trim());
 const isStartDateMissing = computed(() => shouldShowValidation.value && !assetForm.startDate);
 const isInitialValueMissing = computed(() => shouldShowValidation.value && assetForm.initialValue <= 0);
+const shouldReserveDateValueErrorSpace = computed(() => isStartDateMissing.value || isInitialValueMissing.value);
 const calculatorPreviewText = computed(() => {
 	if (!calculatorExpression.value.trim()) {
 		return "Resultado: R$ 0,00";
@@ -794,7 +795,13 @@ onBeforeUnmount(() => {
 							:class="['text-input', { 'required-empty': isStartDateMissing }]"
 							type="date"
 						/>
-						<div v-if="isStartDateMissing" class="error-text">Informe a data inicial.</div>
+						<div
+							v-if="isStartDateMissing || shouldReserveDateValueErrorSpace"
+							class="error-text error-text-reserved"
+							:class="{ 'is-hidden': !isStartDateMissing }"
+						>
+							{{ isStartDateMissing ? "Informe a data inicial." : " " }}
+						</div>
 					</div>
 
 					<div class="field-group">
@@ -851,7 +858,13 @@ onBeforeUnmount(() => {
 								</div>
 							</div>
 						</div>
-						<div v-if="isInitialValueMissing" class="error-text">Informe um valor inicial maior que zero.</div>
+						<div
+							v-if="isInitialValueMissing || shouldReserveDateValueErrorSpace"
+							class="error-text error-text-reserved"
+							:class="{ 'is-hidden': !isInitialValueMissing }"
+						>
+							{{ isInitialValueMissing ? "Informe um valor inicial maior que zero." : " " }}
+						</div>
 					</div>
 
 					<div class="field-group field-group-full">
@@ -1350,6 +1363,7 @@ onBeforeUnmount(() => {
 .field-group {
 	display: grid;
 	gap: 8px;
+	align-content: start;
 }
 
 .field-group-full {
@@ -1488,6 +1502,14 @@ onBeforeUnmount(() => {
 .error-text {
 	color: var(--validation-error-text);
 	font-size: 13px;
+}
+
+.error-text-reserved {
+	min-height: 18px;
+}
+
+.error-text-reserved.is-hidden {
+	visibility: hidden;
 }
 
 .currency-input-group {

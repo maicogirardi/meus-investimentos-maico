@@ -188,26 +188,24 @@ onBeforeUnmount(() => {
 						</div>
 					</div>
 
-					<div class="home-summary-grid">
-						<article class="summary-tile">
+					<div class="home-metrics-grid">
+						<article class="metric-card">
+							<span>Total</span>
+							<strong>{{ formatCurrency(asset.initialValue) }}</strong>
+						</article>
+
+						<article class="metric-card">
 							<span>Rendimento</span>
 							<strong>--</strong>
 						</article>
 
-						<article class="summary-tile">
-							<span>Total</span>
-							<strong>{{ formatCurrency(asset.initialValue) }}</strong>
-						</article>
-					</div>
-
-					<div class="home-detail-grid">
-						<article class="detail-row-card">
-							<span>Rendimento diário</span>
+						<article class="metric-card">
+							<span>Saldo atual no banco</span>
 							<strong>--</strong>
 						</article>
 
-						<article class="detail-row-card">
-							<span>Saldo atual no banco</span>
+						<article class="metric-card">
+							<span>Rendimento diário</span>
 							<strong>--</strong>
 						</article>
 					</div>
@@ -250,8 +248,7 @@ onBeforeUnmount(() => {
 .wallet-card,
 .asset-card,
 .entry-value-card,
-.summary-tile,
-.detail-row-card,
+.metric-card,
 .empty-card {
 	border: 1px solid var(--glass-border);
 	border-radius: 22px;
@@ -510,8 +507,7 @@ onBeforeUnmount(() => {
 }
 
 .entry-value-card,
-.summary-tile,
-.detail-row-card {
+.metric-card {
 	display: grid;
 	gap: 8px;
 	padding: 16px 18px;
@@ -519,8 +515,7 @@ onBeforeUnmount(() => {
 }
 
 .entry-value-card span,
-.summary-tile span,
-.detail-row-card span {
+.metric-card span {
 	font-size: 0.82rem;
 	font-weight: 700;
 	letter-spacing: 0.08em;
@@ -529,8 +524,7 @@ onBeforeUnmount(() => {
 }
 
 .entry-value-card strong,
-.summary-tile strong,
-.detail-row-card strong {
+.metric-card strong {
 	font-size: clamp(1.15rem, 2vw, 1.8rem);
 	line-height: 1.1;
 	color: var(--text-h);
@@ -646,13 +640,7 @@ onBeforeUnmount(() => {
 	align-self: stretch;
 }
 
-.home-summary-grid {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
-	gap: 14px;
-}
-
-.home-detail-grid {
+.home-metrics-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 14px;
@@ -694,8 +682,7 @@ onBeforeUnmount(() => {
 	color: var(--danger-text);
 }
 
-.summary-tile,
-.detail-row-card {
+.metric-card {
 	background: rgba(255, 255, 255, 0.02);
 	border: 1px solid rgba(255, 255, 255, 0.04);
 }
@@ -722,8 +709,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1023px) {
 	.asset-card-top,
-	.home-summary-grid,
-	.home-detail-grid {
+	.home-metrics-grid {
 		grid-template-columns: 1fr;
 		display: grid;
 	}
@@ -821,8 +807,7 @@ onBeforeUnmount(() => {
 	.asset-panel,
 	.asset-card,
 	.entry-value-card,
-	.summary-tile,
-	.detail-row-card,
+	.metric-card,
 	.empty-card {
 		padding: 18px;
 	}
