@@ -41,16 +41,13 @@ const calculatorExpression = ref("");
 const calculatorError = ref("");
 const calculatorExpressionInputRef = ref(null);
 const assetInitialValueInput = ref(formatCurrency(0));
-const touchedFields = reactive({
-	name: false,
-	startDate: false,
-	initialValue: false,
-});
+const shouldShowValidation = ref(false);
 const assetForm = reactive({
 	name: "",
 	institution: "",
 	category: "",
 	startDate: "",
+	color: "#4F7CFF",
 	initialValue: 0,
 });
 
@@ -61,9 +58,9 @@ const summary = computed(() => ({
 const isEditingAsset = computed(() => Boolean(editingAssetId.value));
 const modalTitle = computed(() => (isEditingAsset.value ? "Editar ativo" : "Novo ativo"));
 const submitButtonLabel = computed(() => (isEditingAsset.value ? "Salvar alterações" : "Salvar ativo"));
-const isNameMissing = computed(() => touchedFields.name && !assetForm.name.trim());
-const isStartDateMissing = computed(() => touchedFields.startDate && !assetForm.startDate);
-const isInitialValueMissing = computed(() => touchedFields.initialValue && assetForm.initialValue <= 0);
+const isNameMissing = computed(() => shouldShowValidation.value && !assetForm.name.trim());
+const isStartDateMissing = computed(() => shouldShowValidation.value && !assetForm.startDate);
+const isInitialValueMissing = computed(() => shouldShowValidation.value && assetForm.initialValue <= 0);
 const calculatorPreviewText = computed(() => {
 	if (!calculatorExpression.value.trim()) {
 		return "Resultado: R$ 0,00";
@@ -109,6 +106,54 @@ watch(
 
 function formatCurrency(value) {
 	return currencyFormatter.format(Number(value || 0));
+}
+
+function generateRandomAssetColor() {
+	const hue = Math.floor(Math.random() * 360);
+	const saturation = 70 + Math.floor(Math.random() * 18);
+	const lightness = 54 + Math.floor(Math.random() * 10);
+	return hslToHex(hue, saturation, lightness);
+}
+
+function normalizeAssetColor(value) {
+	const normalized = String(value || "").trim().toUpperCase();
+	return /^#[\dA-F]{6}$/.test(normalized) ? normalized : "#4F7CFF";
+}
+
+function hslToHex(hue, saturation, lightness) {
+	const normalizedSaturation = saturation / 100;
+	const normalizedLightness = lightness / 100;
+	const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+	const hueSection = hue / 60;
+	const secondComponent = chroma * (1 - Math.abs((hueSection % 2) - 1));
+	let red = 0;
+	let green = 0;
+	let blue = 0;
+
+	if (hueSection >= 0 && hueSection < 1) {
+		red = chroma;
+		green = secondComponent;
+	} else if (hueSection < 2) {
+		red = secondComponent;
+		green = chroma;
+	} else if (hueSection < 3) {
+		green = chroma;
+		blue = secondComponent;
+	} else if (hueSection < 4) {
+		green = secondComponent;
+		blue = chroma;
+	} else if (hueSection < 5) {
+		red = secondComponent;
+		blue = chroma;
+	} else {
+		red = chroma;
+		blue = secondComponent;
+	}
+
+	const match = normalizedLightness - chroma / 2;
+	const toHex = (value) => Math.round((value + match) * 255).toString(16).padStart(2, "0");
+
+	return `#${toHex(red)}${toHex(green)}${toHex(blue)}`.toUpperCase();
 }
 
 function formatDate(value) {
@@ -286,12 +331,6 @@ function evaluateCalculatorExpression(expression) {
 	return result;
 }
 
-function resetTouchedFields() {
-	touchedFields.name = false;
-	touchedFields.startDate = false;
-	touchedFields.initialValue = false;
-}
-
 function setCurrencyInput(value) {
 	assetForm.initialValue = Number(value ?? 0);
 	assetInitialValueInput.value = formatCurrency(assetForm.initialValue);
@@ -317,9 +356,10 @@ function resetForm() {
 	assetForm.institution = "";
 	assetForm.category = "";
 	assetForm.startDate = "";
+	assetForm.color = generateRandomAssetColor();
 	setCurrencyInput(0);
 	editingAssetId.value = "";
-	resetTouchedFields();
+	shouldShowValidation.value = false;
 	closeCalculator();
 }
 
@@ -332,6 +372,9 @@ function finalizeModalClose() {
 function openCreateModal() {
 	resetForm();
 	isCreateModalOpen.value = true;
+	void nextTick(() => {
+		shouldShowValidation.value = true;
+	});
 }
 
 function openEditModal(asset) {
@@ -341,8 +384,12 @@ function openEditModal(asset) {
 	assetForm.institution = String(asset.institution || "");
 	assetForm.category = String(asset.category || "");
 	assetForm.startDate = String(asset.startDate || "");
+	assetForm.color = normalizeAssetColor(asset.color);
 	setCurrencyInput(Number(asset.initialValue || 0));
 	isCreateModalOpen.value = true;
+	void nextTick(() => {
+		shouldShowValidation.value = true;
+	});
 }
 
 function closeCreateModal() {
@@ -353,14 +400,16 @@ function closeCreateModal() {
 	finalizeModalClose();
 }
 
-function markFieldTouched(fieldName) {
-	touchedFields[fieldName] = true;
-}
+function syncAssetColorInput(event) {
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
+	if (!target) {
+		return;
+	}
 
-function markRequiredFieldsTouched() {
-	touchedFields.name = true;
-	touchedFields.startDate = true;
-	touchedFields.initialValue = true;
+	const sanitized = target.value.toUpperCase().replace(/[^#A-F0-9]/g, "");
+	const normalized = sanitized.startsWith("#") ? sanitized : `#${sanitized.replace(/^#/, "")}`;
+	assetForm.color = normalized.slice(0, 7);
+	target.value = assetForm.color;
 }
 
 function hasFormErrors() {
@@ -376,7 +425,6 @@ function syncCurrencyInput(event) {
 
 	assetForm.initialValue = parsedValue;
 	assetInitialValueInput.value = displayValue;
-	markFieldTouched("initialValue");
 
 	if (target && target.value !== displayValue) {
 		target.value = displayValue;
@@ -428,7 +476,6 @@ function applyCalculatorResult() {
 		}
 
 		setCurrencyInput(result);
-		markFieldTouched("initialValue");
 		closeCalculator();
 	} catch (error) {
 		calculatorError.value = error instanceof Error ? error.message : "Não foi possível calcular.";
@@ -468,7 +515,6 @@ function handleInitialValueFocus(event) {
 }
 
 function handleInitialValueBlur() {
-	markFieldTouched("initialValue");
 	setCurrencyInput(assetForm.initialValue);
 }
 
@@ -501,7 +547,6 @@ function handleCurrencyKeydown(event) {
 }
 
 function submitAsset() {
-	markRequiredFieldsTouched();
 	if (hasFormErrors()) {
 		return;
 	}
@@ -511,6 +556,7 @@ function submitAsset() {
 		institution: assetForm.institution,
 		category: assetForm.category,
 		startDate: assetForm.startDate,
+		color: normalizeAssetColor(assetForm.color),
 		initialValue: assetForm.initialValue,
 	};
 
@@ -624,7 +670,10 @@ onBeforeUnmount(() => {
 				<div class="asset-main">
 					<div class="asset-header">
 						<div class="asset-title-block">
-							<h3>{{ asset.name }}</h3>
+							<div class="asset-title-row">
+								<span class="asset-color-dot" :style="{ '--asset-color': asset.color || '#4F7CFF' }" />
+								<h3>{{ asset.name }}</h3>
+							</div>
 							<p>{{ formatCurrency(asset.initialValue) }}</p>
 						</div>
 
@@ -664,10 +713,21 @@ onBeforeUnmount(() => {
 						</div>
 					</div>
 
-					<div class="asset-tags">
-						<span v-if="asset.category" class="tag">{{ asset.category }}</span>
-						<span v-if="asset.institution" class="tag">{{ asset.institution }}</span>
-						<span class="tag subtle">Início: {{ formatDate(asset.startDate) }}</span>
+					<div class="asset-info-table" :style="{ '--asset-color': asset.color || '#4F7CFF' }">
+						<div class="asset-info-row">
+							<span class="asset-info-label">Categoria</span>
+							<strong class="asset-info-value">{{ asset.category || "--" }}</strong>
+						</div>
+
+						<div class="asset-info-row">
+							<span class="asset-info-label">Instituição</span>
+							<strong class="asset-info-value">{{ asset.institution || "--" }}</strong>
+						</div>
+
+						<div class="asset-info-row">
+							<span class="asset-info-label">Início</span>
+							<strong class="asset-info-value">{{ formatDate(asset.startDate) }}</strong>
+						</div>
 					</div>
 				</div>
 			</article>
@@ -698,7 +758,6 @@ onBeforeUnmount(() => {
 							type="text"
 							maxlength="80"
 							placeholder="Ex.: CDB Itaú 100% CDI"
-							@blur="markFieldTouched('name')"
 						/>
 						<div v-if="isNameMissing" class="error-text">Informe o nome do ativo.</div>
 					</div>
@@ -734,7 +793,6 @@ onBeforeUnmount(() => {
 							v-model="assetForm.startDate"
 							:class="['text-input', { 'required-empty': isStartDateMissing }]"
 							type="date"
-							@blur="markFieldTouched('startDate')"
 						/>
 						<div v-if="isStartDateMissing" class="error-text">Informe a data inicial.</div>
 					</div>
@@ -783,11 +841,11 @@ onBeforeUnmount(() => {
 									/>
 									<div v-if="calculatorError" class="error-text">{{ calculatorError }}</div>
 									<div class="calculator-popover-actions">
-										<button type="button" class="secondary-button" @click="closeCalculator">
-											Cancelar
-										</button>
 										<button type="button" class="primary-button calculator-apply-button" @click="applyCalculatorResult">
 											Aplicar
+										</button>
+										<button type="button" class="danger-button" @click="closeCalculator">
+											Cancelar
 										</button>
 									</div>
 								</div>
@@ -795,12 +853,38 @@ onBeforeUnmount(() => {
 						</div>
 						<div v-if="isInitialValueMissing" class="error-text">Informe um valor inicial maior que zero.</div>
 					</div>
+
+					<div class="field-group field-group-full">
+						<label class="field-label" for="asset-color-hex">Cor</label>
+						<div class="asset-color-shell">
+							<label class="asset-color-picker-button" for="asset-color-picker" :style="{ '--asset-color': assetForm.color || '#4F7CFF' }">
+								<span class="asset-color-picker-core" />
+							</label>
+
+							<input
+								id="asset-color-picker"
+								v-model="assetForm.color"
+								class="asset-color-picker-native"
+								type="color"
+							/>
+
+							<input
+								id="asset-color-hex"
+								:value="assetForm.color"
+								class="text-input asset-color-hex-input"
+								type="text"
+								maxlength="7"
+								placeholder="#4F7CFF"
+								@input="syncAssetColorInput($event)"
+							/>
+						</div>
+					</div>
 				</div>
 
 				<p class="field-note modal-note">O estado mensal inicial será criado em Abril de 2026.</p>
 
 				<div class="modal-actions">
-					<button class="primary-button" type="button" :disabled="isSubmitting" @click="submitAsset">
+					<button class="primary-button" type="button" :disabled="isSubmitting || hasFormErrors()" @click="submitAsset">
 						{{ submitButtonLabel }}
 					</button>
 					<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeCreateModal">
@@ -937,6 +1021,22 @@ onBeforeUnmount(() => {
 	gap: 6px;
 }
 
+.asset-title-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.asset-color-dot,
+.tag-color-dot {
+	width: 12px;
+	height: 12px;
+	flex: 0 0 12px;
+	border-radius: 50%;
+	background: var(--asset-color, #4F7CFF);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--asset-color, #4F7CFF) 16%, transparent);
+}
+
 .asset-title-block h3 {
 	margin: 0;
 	font-size: 1.15rem;
@@ -1010,27 +1110,37 @@ onBeforeUnmount(() => {
 		inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.asset-tags {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
+.asset-info-table {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0;
+	border: 1px solid color-mix(in srgb, var(--asset-color, var(--glass-border)) 16%, var(--glass-border));
+	border-radius: 16px;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--glass-surface-strong) 58%, transparent);
 }
 
-.tag {
-	display: inline-flex;
-	align-items: center;
-	padding: 8px 12px;
-	border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--glass-border));
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--color-primary) 10%, var(--glass-surface-strong));
+.asset-info-row {
+	display: grid;
+	gap: 6px;
+	padding: 12px 14px;
+	border-right: 1px solid color-mix(in srgb, var(--asset-color, var(--glass-border)) 14%, var(--glass-border));
+}
+
+.asset-info-row:last-child {
+	border-right: 0;
+}
+
+.asset-info-label {
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--text-soft);
+}
+
+.asset-info-value {
 	color: var(--text-h);
-	font-size: 0.9rem;
-}
-
-.tag.subtle {
-	border-color: var(--glass-border);
-	background: var(--glass-surface-strong);
-	color: var(--text);
 }
 
 .empty-card {
@@ -1252,6 +1362,60 @@ onBeforeUnmount(() => {
 	color: var(--text-h);
 }
 
+.asset-color-shell {
+	position: relative;
+	display: grid;
+	grid-template-columns: 58px minmax(0, 1fr);
+	gap: 12px;
+	align-items: center;
+	min-height: 68px;
+	padding: 10px;
+	border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--input-border));
+	border-radius: 18px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--input-surface);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.asset-color-picker-button {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--asset-color) 24%, transparent) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--glass-surface-strong) 82%, transparent);
+	border: 1px solid color-mix(in srgb, var(--asset-color) 34%, var(--glass-border));
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--asset-color) 18%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.14);
+	cursor: pointer;
+}
+
+.asset-color-picker-core {
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	background: var(--asset-color, #4F7CFF);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.asset-color-picker-native {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.asset-color-hex-input {
+	min-height: 46px;
+	text-transform: uppercase;
+}
+
 .text-input {
 	width: 100%;
 	min-height: 46px;
@@ -1374,13 +1538,14 @@ onBeforeUnmount(() => {
 }
 
 .calculator-popover {
-	position: absolute;
-	bottom: calc(100% + 10px);
+	position: fixed;
+	top: 50%;
 	left: 50%;
-	z-index: 30;
+	bottom: auto;
+	z-index: 60;
 	display: grid;
 	gap: 8px;
-	width: min(320px, calc(100vw - 56px));
+	width: min(360px, calc(100vw - 56px));
 	padding: 14px;
 	border: 1px solid var(--glass-border-strong);
 	border-radius: 18px;
@@ -1389,7 +1554,7 @@ onBeforeUnmount(() => {
 		var(--glass-surface-strong);
 	box-shadow: var(--shadow);
 	backdrop-filter: blur(22px);
-	transform: translateX(-50%);
+	transform: translate(-50%, -50%);
 }
 
 .calculator-preview {
@@ -1447,6 +1612,19 @@ onBeforeUnmount(() => {
 		align-items: stretch;
 	}
 
+	.asset-info-table {
+		grid-template-columns: 1fr;
+	}
+
+	.asset-info-row {
+		border-right: 0;
+		border-bottom: 1px solid color-mix(in srgb, var(--asset-color, var(--glass-border)) 14%, var(--glass-border));
+	}
+
+	.asset-info-row:last-child {
+		border-bottom: 0;
+	}
+
 	.asset-actions {
 		justify-content: flex-end;
 	}
@@ -1463,10 +1641,7 @@ onBeforeUnmount(() => {
 	}
 
 	.calculator-popover {
-		left: 0;
-		right: 0;
-		width: auto;
-		transform: none;
+		width: min(360px, calc(100vw - 28px));
 	}
 
 	.modal-actions {

@@ -15,6 +15,11 @@ function normalizeText(value) {
 	return String(value || "").trim();
 }
 
+function normalizeColor(value) {
+	const normalized = String(value || "").trim();
+	return /^#[\da-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : "#4F7CFF";
+}
+
 function normalizeAmount(value) {
 	const normalized = Number(value);
 	return Number.isFinite(normalized) ? Number(normalized.toFixed(2)) : 0;
@@ -38,6 +43,7 @@ export function subscribeAssets(uid, callback) {
 					institution: normalizeText(data.institution),
 					category: normalizeText(data.category),
 					startDate: normalizeText(data.startDate),
+					color: normalizeColor(data.color),
 					initialValue: normalizeAmount(data.initialValue),
 					isActive: data.isActive !== false,
 				};
@@ -63,6 +69,7 @@ export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	const startDate = normalizeText(assetInput.startDate);
 	const institution = normalizeText(assetInput.institution);
 	const category = normalizeText(assetInput.category);
+	const color = normalizeColor(assetInput.color);
 	const initialValue = normalizeAmount(assetInput.initialValue);
 
 	if (!name || !startDate || initialValue <= 0) {
@@ -81,6 +88,7 @@ export async function createAssetWithMonthlyState(uid, assetInput, period) {
 		initialValue,
 		institution,
 		category,
+		color,
 		isActive: true,
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -120,6 +128,7 @@ export async function updateAssetWithInitialMonthlyState(uid, assetId, assetInpu
 	const startDate = normalizeText(assetInput.startDate);
 	const institution = normalizeText(assetInput.institution);
 	const category = normalizeText(assetInput.category);
+	const color = normalizeColor(assetInput.color);
 	const initialValue = normalizeAmount(assetInput.initialValue);
 
 	if (!name || !startDate || initialValue <= 0) {
@@ -139,6 +148,7 @@ export async function updateAssetWithInitialMonthlyState(uid, assetId, assetInpu
 		initialValue,
 		institution,
 		category,
+		color,
 		updatedAt: timestamp,
 	});
 

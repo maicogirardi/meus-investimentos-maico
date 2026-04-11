@@ -24,6 +24,7 @@ Direção consolidada:
 * GitHub Pages como ambiente secundário
 * layout desktop first com boa adaptação para tablet e mobile
 * PWA viável para uso no celular
+* ações destrutivas e também botões de cancelar, fechar ou voltar devem usar visual `danger`
 
 ## 2. O que já está implementado
 
@@ -73,7 +74,7 @@ Observação importante:
 Já funciona hoje:
 
 * listener realtime de ativos
-* cadastro de ativo com `name`, `institution`, `category`, `startDate` e `initialValue`
+* cadastro de ativo com `name`, `institution`, `category`, `startDate`, `color` e `initialValue`
 * exclusão de ativo com remoção em cascata de documentos relacionados por `assetId`
 * criação automática de `assetMonthlyStates/{assetId}__{periodId}` ao cadastrar o ativo
 
@@ -100,17 +101,20 @@ Campos criados hoje no estado mensal inicial:
 
 * permite selecionar ano e mês
 * permite criar e excluir período
-* mostra apenas um card-resumo ainda estático
-* ainda não lista ativos nem calcula saldo total da carteira
+* já mostra um card-resumo fixo da carteira no topo
+* já lista os ativos em cards operacionais com visual alinhado ao app de finanças
+* ainda não grava leituras diárias, aportes, saques e saques extras
+* ainda não calcula saldo total real da carteira nem rendimento
 
 `Resumo` hoje:
 
-* continua como placeholder
+* já possui layout inicial para saldo anual, líquido, rendimento bruto e saques
+* ainda usa placeholders onde os cálculos reais da Home ainda não existem
 
 `Ativos` hoje:
 
 * já está funcional para cadastro, edição e exclusão
-* lista nome, valor inicial, instituição, categoria e data inicial
+* lista nome, valor inicial, instituição, categoria, data inicial e cor do ativo
 
 `Configurações` hoje:
 
@@ -193,8 +197,8 @@ Coleções de organização mais ampla continuam previstas, mas ainda fora da im
 Arquivos principais hoje:
 
 * `src/App.vue`: shell principal, auth, listeners, seleção de aba e modais de período
-* `src/views/HomeView.vue`: filtro de período e card principal ainda parcial
-* `src/views/ResumoView.vue`: placeholder
+* `src/views/HomeView.vue`: filtro de período, resumo visual e cards operacionais iniciais da Home
+* `src/views/ResumoView.vue`: layout inicial do resumo analítico
 * `src/views/AtivosView.vue`: CRUD visual de ativos
 * `src/views/ConfiguracoesView.vue`: preferências e sessão
 * `src/services/firebase.js`: bootstrap do Firebase via `VITE_FIREBASE_*`

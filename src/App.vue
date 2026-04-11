@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import BottomTabs from "./components/navigation/BottomTabs.vue";
@@ -44,6 +44,9 @@ const isDeletePeriodModalOpen = ref(false);
 const periodModalYear = ref(today.getFullYear());
 const periodModalMonth = ref(today.getMonth() + 1);
 const assetErrorMessage = ref("");
+const deletePeriodTarget = ref(null);
+const deleteAssetTarget = ref(null);
+const shouldShowPeriodValidation = ref(false);
 
 let unsubscribeAuth = null;
 let unsubscribePreferences = null;
@@ -124,6 +127,13 @@ const periodLabel = computed(() => {
 
 	return "";
 });
+const isPeriodYearInvalid = computed(() =>
+	shouldShowPeriodValidation.value && normalizeStoredYear(periodModalYear.value) == null,
+);
+const isPeriodMonthInvalid = computed(() =>
+	shouldShowPeriodValidation.value && normalizeStoredMonth(periodModalMonth.value) == null,
+);
+const isPeriodFormInvalid = computed(() => isPeriodYearInvalid.value || isPeriodMonthInvalid.value);
 const isDataReady = computed(() =>
 	authReady.value &&
 	(!isAuthenticated.value || (hasLoadedUiPreferences.value && hasLoadedPeriods.value && hasLoadedAssets.value)),
@@ -402,6 +412,9 @@ function clearUserState() {
 	currentPage.value = "settings";
 	isPeriodModalOpen.value = false;
 	isDeletePeriodModalOpen.value = false;
+	deletePeriodTarget.value = null;
+	deleteAssetTarget.value = null;
+	shouldShowPeriodValidation.value = false;
 	assetErrorMessage.value = "";
 	applyTheme();
 }
@@ -419,10 +432,15 @@ function openPeriodModal() {
 	periodModalYear.value = selectedYear.value || today.getFullYear();
 	periodModalMonth.value = selectedMonth.value || today.getMonth() + 1;
 	isPeriodModalOpen.value = true;
+	shouldShowPeriodValidation.value = false;
+	void nextTick(() => {
+		shouldShowPeriodValidation.value = true;
+	});
 }
 
 function closePeriodModal() {
 	isPeriodModalOpen.value = false;
+	shouldShowPeriodValidation.value = false;
 }
 
 function openDeletePeriodModal() {
@@ -430,6 +448,10 @@ function openDeletePeriodModal() {
 		return;
 	}
 
+	deletePeriodTarget.value = {
+		id: selectedPeriod.value.id,
+		label: selectedPeriod.value.label || periodLabel.value,
+	};
 	isDeletePeriodModalOpen.value = true;
 }
 
@@ -439,6 +461,26 @@ function closeDeletePeriodModal() {
 	}
 
 	isDeletePeriodModalOpen.value = false;
+	deletePeriodTarget.value = null;
+}
+
+function openDeleteAssetModal(asset) {
+	if (!currentUser.value || !asset?.id) {
+		return;
+	}
+
+	deleteAssetTarget.value = {
+		id: asset.id,
+		name: String(asset.name || "este ativo"),
+	};
+}
+
+function closeDeleteAssetModal() {
+	if (status.value === "loading") {
+		return;
+	}
+
+	deleteAssetTarget.value = null;
 }
 
 function getActiveModalActions() {
@@ -453,6 +495,13 @@ function getActiveModalActions() {
 		return {
 			confirm: confirmDeleteSelectedPeriod,
 			cancel: closeDeletePeriodModal,
+		};
+	}
+
+	if (deleteAssetTarget.value) {
+		return {
+			confirm: confirmDeleteAsset,
+			cancel: closeDeleteAssetModal,
 		};
 	}
 
@@ -503,7 +552,7 @@ function handleModalKeydown(event) {
 }
 
 async function savePeriod() {
-	if (!currentUser.value || !Number.isInteger(periodModalYear.value) || !Number.isInteger(periodModalMonth.value)) {
+	if (!currentUser.value || isPeriodFormInvalid.value) {
 		return;
 	}
 
@@ -547,17 +596,22 @@ async function deleteSelectedPeriod() {
 }
 
 async function confirmDeleteSelectedPeriod() {
-	if (!selectedPeriod.value || !currentUser.value) {
+	if (!deletePeriodTarget.value || !currentUser.value) {
 		return;
 	}
 
+	let didDelete = false;
 	status.value = "loading";
 
 	try {
-		await deleteDoc(doc(db, "users", currentUser.value.uid, "periods", selectedPeriod.value.id));
-		closeDeletePeriodModal();
+		await deleteDoc(doc(db, "users", currentUser.value.uid, "periods", deletePeriodTarget.value.id));
+		didDelete = true;
 	} finally {
 		status.value = "idle";
+	}
+
+	if (didDelete) {
+		closeDeletePeriodModal();
 	}
 }
 
@@ -598,27 +652,26 @@ async function handleUpdateAsset(assetInput) {
 	}
 }
 
-async function handleDeleteAsset(asset) {
-	if (!currentUser.value || !asset?.id) {
-		return;
-	}
-
-	const shouldDelete = window.confirm(
-		`Excluir o ativo ${asset.name}? Os registros vinculados a ele também serão removidos.`,
-	);
-	if (!shouldDelete) {
+async function confirmDeleteAsset() {
+	if (!currentUser.value || !deleteAssetTarget.value?.id) {
 		return;
 	}
 
 	assetErrorMessage.value = "";
 	status.value = "loading";
+	let didDelete = false;
 
 	try {
-		await deleteAssetCascade(currentUser.value.uid, asset.id);
+		await deleteAssetCascade(currentUser.value.uid, deleteAssetTarget.value.id);
+		didDelete = true;
 	} catch {
 		assetErrorMessage.value = "Não foi possível excluir o ativo agora.";
 	} finally {
 		status.value = "idle";
+	}
+
+	if (didDelete) {
+		closeDeleteAssetModal();
 	}
 }
 
@@ -756,13 +809,19 @@ onBeforeUnmount(() => {
 				:period-label="periodLabel"
 				:has-selected-period="Boolean(periodLabel)"
 				:is-submitting="isSubmitting"
+				:assets="assets"
 				@update:year="selectedYear = $event"
 				@update:month="selectedMonth = $event"
 				@add-month="openPeriodModal"
 				@delete-month="openDeletePeriodModal"
 			/>
 
-			<ResumoView v-else-if="currentPage === 'summary'" />
+			<ResumoView
+				v-else-if="currentPage === 'summary'"
+				:assets="assets"
+				:period-label="periodLabel"
+				:selected-year="selectedYear"
+			/>
 
 			<AtivosView
 				v-else-if="currentPage === 'assets'"
@@ -773,7 +832,7 @@ onBeforeUnmount(() => {
 				:error-message="assetErrorMessage"
 				@create-asset="handleCreateAsset"
 				@update-asset="handleUpdateAsset"
-				@delete-asset="handleDeleteAsset"
+				@delete-asset="openDeleteAssetModal"
 			/>
 
 			<ConfiguracoesView
@@ -808,17 +867,30 @@ onBeforeUnmount(() => {
 					<div class="modal-fields">
 						<label class="field-group">
 							<span class="field-label">Ano</span>
-							<input v-model.number="periodModalYear" class="text-input" type="number" min="2000" step="1" />
+							<input
+								v-model.number="periodModalYear"
+								:class="['text-input', { 'required-empty': isPeriodYearInvalid }]"
+								type="number"
+								min="2000"
+								step="1"
+							/>
+							<span v-if="isPeriodYearInvalid" class="error-text">Informe um ano v&aacute;lido.</span>
 						</label>
 
 						<label class="field-group">
 							<span class="field-label">Mês</span>
-							<AppSelect v-model="periodModalMonth" :options="monthOptions" placeholder="Escolha o mês" />
+							<AppSelect
+								v-model="periodModalMonth"
+								:options="monthOptions"
+								:invalid="isPeriodMonthInvalid"
+								placeholder="Escolha o mês"
+							/>
+							<span v-if="isPeriodMonthInvalid" class="error-text">Escolha um m&ecirc;s.</span>
 						</label>
 					</div>
 
 					<div class="modal-actions">
-						<button class="primary-button" type="button" :disabled="isSubmitting" @click="savePeriod">
+						<button class="primary-button" type="button" :disabled="isSubmitting || isPeriodFormInvalid" @click="savePeriod">
 							Salvar
 						</button>
 						<button class="danger-button" type="button" :disabled="isSubmitting" @click="closePeriodModal">
@@ -838,15 +910,41 @@ onBeforeUnmount(() => {
 					<div class="modal-fields">
 						<div class="confirm-summary-card">
 							<span class="field-label">Período selecionado</span>
-							<strong>{{ selectedPeriod?.label || periodLabel }}</strong>
+							<strong>{{ deletePeriodTarget?.label || selectedPeriod?.label || periodLabel }}</strong>
 						</div>
 					</div>
 
 					<div class="modal-actions">
-						<button class="secondary-button" type="button" :disabled="isSubmitting" @click="closeDeletePeriodModal">
+						<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeDeletePeriodModal">
 							Cancelar
 						</button>
 						<button class="danger-button" type="button" :disabled="isSubmitting" @click="confirmDeleteSelectedPeriod">
+							Excluir
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<div v-if="deleteAssetTarget" class="modal-backdrop" @click="closeDeleteAssetModal">
+				<div class="modal-card narrow-mobile-modal" @click.stop>
+					<header class="modal-header">
+						<h2>Excluir ativo</h2>
+						<p>Confirme a exclusão do ativo selecionado.</p>
+					</header>
+
+					<div class="modal-fields">
+						<div class="confirm-summary-card">
+							<span class="field-label">Ativo selecionado</span>
+							<strong>{{ deleteAssetTarget.name }}</strong>
+							<span class="field-note">Os registros vinculados a este ativo também serão removidos.</span>
+						</div>
+					</div>
+
+					<div class="modal-actions">
+						<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeDeleteAssetModal">
+							Cancelar
+						</button>
+						<button class="danger-button" type="button" :disabled="isSubmitting" @click="confirmDeleteAsset">
 							Excluir
 						</button>
 					</div>
@@ -1121,6 +1219,22 @@ onBeforeUnmount(() => {
 .text-input:focus-visible {
 	border-color: var(--input-focus-border);
 	box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
+.required-empty {
+	border-color: var(--validation-error-border) !important;
+	box-shadow: 0 0 0 2px var(--validation-error-ring);
+	background: var(--validation-error-bg);
+}
+
+.field-group:has(.required-empty) .field-label,
+.field-group:has(.app-select.is-invalid) .field-label {
+	color: var(--validation-error-text);
+}
+
+.error-text {
+	font-size: 13px;
+	color: var(--validation-error-text);
 }
 
 .modal-actions {
