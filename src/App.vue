@@ -37,6 +37,7 @@ const errorMessage = ref("");
 const currentUser = ref(null);
 const authReady = ref(false);
 const isUpdateAvailable = ref(false);
+const isInstallAvailable = ref(false);
 const currentPage = ref("home");
 const userPreferences = ref({ darkMode: true, themeColor: "#4f7cff" });
 const hasLoadedUiPreferences = ref(false);
@@ -68,6 +69,7 @@ let unsubscribeAssets = null;
 let unsubscribeAssetMonthlyStates = null;
 let unsubscribeTransactions = null;
 let triggerAppUpdate = null;
+let deferredInstallPrompt = null;
 let isCreatingDefaultPeriod = false;
 
 const monthOptions = Object.freeze([
@@ -444,6 +446,40 @@ function reloadWithNewVersion() {
 	triggerAppUpdate();
 }
 
+function isRunningAsInstalledApp() {
+	return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function handleBeforeInstallPrompt(event) {
+	if (isRunningAsInstalledApp()) {
+		return;
+	}
+
+	event.preventDefault();
+	deferredInstallPrompt = event;
+	isInstallAvailable.value = true;
+}
+
+function handleAppInstalled() {
+	deferredInstallPrompt = null;
+	isInstallAvailable.value = false;
+}
+
+async function promptInstallApp() {
+	if (!deferredInstallPrompt) {
+		return;
+	}
+
+	deferredInstallPrompt.prompt();
+
+	try {
+		await deferredInstallPrompt.userChoice;
+	} finally {
+		deferredInstallPrompt = null;
+		isInstallAvailable.value = false;
+	}
+}
+
 function clearUserState() {
 	unsubscribePreferences?.();
 	unsubscribePeriods?.();
@@ -806,6 +842,9 @@ onMounted(() => {
 	applyTheme();
 	window.addEventListener("keydown", handleModalKeydown);
 	window.addEventListener("app-update-available", handleAppUpdateAvailable);
+	window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+	window.addEventListener("appinstalled", handleAppInstalled);
+	isInstallAvailable.value = !isRunningAsInstalledApp() && deferredInstallPrompt != null;
 
 	if (!auth) {
 		authReady.value = true;
@@ -851,6 +890,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	window.removeEventListener("keydown", handleModalKeydown);
 	window.removeEventListener("app-update-available", handleAppUpdateAvailable);
+	window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+	window.removeEventListener("appinstalled", handleAppInstalled);
 	unsubscribeAuth?.();
 	unsubscribePreferences?.();
 	unsubscribePeriods?.();
@@ -863,6 +904,21 @@ onBeforeUnmount(() => {
 <template>
 	<AppLayout>
 		<div class="app-page">
+			<section v-if="isInstallAvailable" class="install-banner">
+				<div class="install-banner-copy">
+					<strong>Instale o app no dispositivo.</strong>
+					<span>Abra a carteira direto da tela inicial com experiência de PWA completa.</span>
+				</div>
+				<button class="primary-button" type="button" @click="promptInstallApp">
+					<span class="button-icon" aria-hidden="true">
+						<svg viewBox="0 0 24 24" fill="none">
+							<path d="M12 3.5v10m0 0 3.5-3.5M12 13.5 8.5 10M5 16.5h14" />
+						</svg>
+					</span>
+					Instalar app
+				</button>
+			</section>
+
 			<section v-if="isUpdateAvailable" class="update-banner">
 				<div class="update-banner-copy">
 					<strong>Nova versão disponível.</strong>
@@ -1109,6 +1165,7 @@ onBeforeUnmount(() => {
 	justify-items: center;
 }
 
+.install-banner,
 .update-banner {
 	display: flex;
 	align-items: center;
@@ -1124,15 +1181,26 @@ onBeforeUnmount(() => {
 	backdrop-filter: blur(18px);
 }
 
+.install-banner {
+	border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--glass-border-strong));
+	background:
+		linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, transparent) 0%, transparent 68%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 10%, var(--glass-surface-strong));
+}
+
+.install-banner-copy,
 .update-banner-copy {
 	display: grid;
 	gap: 4px;
 }
 
+.install-banner-copy strong,
 .update-banner-copy strong {
 	color: var(--text-h);
 }
 
+.install-banner-copy span,
 .update-banner-copy span {
 	font-size: 14px;
 	color: var(--text);
@@ -1388,6 +1456,7 @@ onBeforeUnmount(() => {
 		width: 100%;
 	}
 
+	.install-banner,
 	.update-banner {
 		flex-direction: column;
 		align-items: stretch;

@@ -39,6 +39,8 @@ O projeto ja possui navegacao principal com quatro abas:
 
 A base visual, o tema, a navegacao inferior, o service worker e o banner de atualizacao seguem o mesmo raciocinio do `financas-app`.
 
+O fluxo de instalacao do PWA agora tambem expõe um CTA proprio dentro do app quando o navegador dispara `beforeinstallprompt`, em vez de depender apenas do banner nativo do browser.
+
 O pacote PWA agora inclui icones PNG dedicados para instalacao em navegadores mobile e suporte a icone maskable.
 
 ### Autenticacao e preferencias
@@ -220,6 +222,7 @@ Arquivos principais hoje:
 * `src/services/homeActions.js`: grava leituras e transacoes originadas na Home e atualiza `assetMonthlyStates`
 * `public/sw.js`: cache basico do app shell e ativacao de nova versao do PWA
 * `src/main.js`: registro versionado do service worker por build para exibir o banner de atualizacao como no `financas-app`
+* `src/App.vue`: shell principal agora tambem captura `beforeinstallprompt` para mostrar o banner interno de instalacao do PWA
 * `.github/workflows/deploy-pages.yml`: deploy automatico do GitHub Pages
 
 ## 6. Publicacao e ambientes
