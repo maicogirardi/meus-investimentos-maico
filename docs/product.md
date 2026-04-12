@@ -210,7 +210,8 @@ Arquivos principais hoje:
 * `src/services/periods.js`: IDs, listener e criação de períodos
 * `src/services/assets.js`: listeners de ativos e estados mensais, criação de ativo com estado mensal e exclusão em cascata
 * `src/services/homeActions.js`: grava leituras e transações originadas na Home e atualiza `assetMonthlyStates`
-* `public/sw.js`: cache básico e fluxo de atualização do PWA
+* `public/sw.js`: cache básico do app shell e ativação de nova versão do PWA
+* `src/main.js`: registro versionado do service worker por build para exibir o banner de atualização como no `financas-app`
 * `.github/workflows/deploy-pages.yml`: deploy automático do GitHub Pages
 
 ## 6. Publicação e ambientes
