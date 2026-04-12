@@ -3,51 +3,51 @@
 Este arquivo substitui a malha anterior de documentos. A partir de agora ele concentra:
 
 * objetivo do produto
-* implementação real do projeto
-* arquitetura prática
-* fluxo de publicação
-* divergências conhecidas entre a visão desejada e o que o código entrega hoje
+* implementacao real do projeto
+* arquitetura pratica
+* fluxo de publicacao
+* divergencias conhecidas entre a visao desejada e o que o codigo entrega hoje
 
-Se houver conflito entre documentação antiga, este arquivo deve ser considerado a referência principal.
+Se houver conflito entre documentacao antiga, este arquivo deve ser considerado a referencia principal.
 
 ## 1. Objetivo do produto
 
-O app existe para acompanhar patrimônio, alocação e evolução dos investimentos de forma manual, com base nos valores vistos no app do banco.
+O app existe para acompanhar patrimonio, alocacao e evolucao dos investimentos de forma manual, com base nos valores vistos no app do banco.
 
-Direção consolidada:
+Direcao consolidada:
 
 * stack alinhada ao `financas-app`
 * Vue 3 + Vite + Firebase
-* autenticação privada com Google
+* autenticacao privada com Google
 * Firestore como banco principal
 * Firebase Hosting como ambiente principal de teste real
-* GitHub Pages como ambiente secundário
-* layout desktop first com boa adaptação para tablet e mobile
-* PWA viável para uso no celular
-* ações destrutivas e também botões de cancelar, fechar ou voltar devem usar visual `danger`
+* GitHub Pages como ambiente secundario
+* layout desktop first com boa adaptacao para tablet e mobile
+* PWA viavel para uso no celular
+* acoes destrutivas e tambem botoes de cancelar, fechar ou voltar devem usar visual `danger`
 
-## 2. O que já está implementado
+## 2. O que ja esta implementado
 
 ### Shell do app
 
-O projeto já possui navegação principal com quatro abas:
+O projeto ja possui navegacao principal com quatro abas:
 
 * `Home`
 * `Resumo`
 * `Ativos`
-* `Configurações`
+* `Configuracoes`
 
-A base visual, o tema, a navegação inferior, o service worker e o banner de atualização seguem o mesmo raciocínio do `financas-app`.
+A base visual, o tema, a navegacao inferior, o service worker e o banner de atualizacao seguem o mesmo raciocinio do `financas-app`.
 
-### Autenticação e preferências
+### Autenticacao e preferencias
 
-Já funciona hoje:
+Ja funciona hoje:
 
 * login com Google
 * logout
-* persistência de preferências em `users/{uid}/configs/preferences`
-* sincronização realtime das preferências
-* persistência do período selecionado pelo usuário
+* persistencia de preferencias em `users/{uid}/configs/preferences`
+* sincronizacao realtime das preferencias
+* persistencia do periodo selecionado pelo usuario
 
 Campos usados hoje em `users/{uid}/configs/preferences`:
 
@@ -56,27 +56,27 @@ Campos usados hoje em `users/{uid}/configs/preferences`:
 * `selectedYear`
 * `selectedMonth`
 
-### Períodos
+### Periodos
 
-Já funciona hoje:
+Ja funciona hoje:
 
-* listener realtime de períodos
-* criação manual de período
-* exclusão manual de período
-* criação automática de um período padrão quando o usuário ainda não tem nenhum
+* listener realtime de periodos
+* criacao manual de periodo
+* exclusao manual de periodo
+* criacao automatica de um periodo padrao quando o usuario ainda nao tem nenhum
 
-Observação importante:
+Observacao importante:
 
-* o período padrão está hardcoded como abril de 2026 no código atual
+* o periodo padrao esta hardcoded como abril de 2026 no codigo atual
 
 ### Ativos
 
-Já funciona hoje:
+Ja funciona hoje:
 
 * listener realtime de ativos
 * cadastro de ativo com `name`, `institution`, `category`, `startDate`, `color` e `initialValue`
-* exclusão de ativo com remoção em cascata de documentos relacionados por `assetId`
-* criação automática de `assetMonthlyStates/{assetId}__{periodId}` ao cadastrar o ativo
+* exclusao de ativo com remocao em cascata de documentos relacionados por `assetId`
+* criacao automatica de `assetMonthlyStates/{assetId}__{periodId}` ao cadastrar o ativo
 
 Campos criados hoje no estado mensal inicial:
 
@@ -99,41 +99,46 @@ Campos criados hoje no estado mensal inicial:
 
 `Home` hoje:
 
-* permite selecionar ano e mês
-* permite criar e excluir período
-* já mostra um card-resumo fixo da carteira no topo
-* já lista os ativos em cards operacionais com visual alinhado ao app de finanças
-* já possui modais de atualização, aporte, saque e saque extra por ativo
-* já grava leituras diárias em `dailyReadings`
-* já grava aportes, saques normais e saques extras em `transactions`
-* já recalcula o estado mensal local do ativo após cada ação da Home
-* ainda não recalcula o saldo total consolidado da carteira no card superior
+* permite selecionar ano e mes
+* permite criar e excluir periodo
+* ja mostra um card-resumo fixo da carteira no topo
+* ja lista os ativos em cards operacionais com visual alinhado ao app de financas
+* ja possui modais de atualizacao, aporte, saque e saque extra por ativo
+* ja grava leituras diarias em `dailyReadings`
+* ja grava aportes, saques normais e saques extras em `transactions`
+* ja recalcula o estado mensal local do ativo apos cada acao da Home
+* ainda nao recalcula o saldo total consolidado da carteira no card superior
 
 `Resumo` hoje:
 
 * consome `assets` e `assetMonthlyStates` em realtime
-* saldo anual já pode ser filtrado por ativo com pills no cabeçalho
-* rendimento líquido, rendimento bruto e saques já mostram o nome e a cor de cada ativo
-* continua limitado aos dados que já existem em `assetMonthlyStates`
+* saldo anual ja pode ser filtrado por ativo com pills no cabecalho
+* rendimento liquido, rendimento bruto e saques ja mostram o nome e a cor de cada ativo
+* movimentacoes ja consomem `transactions` filtradas por ativo
+* tabela de movimentacoes ja possui ordenacao por ativo, periodo, tipo, motivo e valor
+* tabela de movimentacoes ja possui paginacao de 5 itens por pagina
+* coluna `Tipo` ja diferencia `Aporte`, `Saque` e `Saque Extra`
+* durante esta fase existe massa fake temporaria na view apenas para validar layout e paginacao
+* continua limitado aos dados que ja existem em `assetMonthlyStates`
 
 `Ativos` hoje:
 
-* já está funcional para cadastro, edição e exclusão
-* lista nome, valor inicial, instituição, categoria, data inicial e cor do ativo
+* ja esta funcional para cadastro, edicao e exclusao
+* lista nome, valor inicial, instituicao, categoria, data inicial e cor do ativo
 
-`Configurações` hoje:
+`Configuracoes` hoje:
 
-* já está funcional para tema, cor do tema, login e logout
+* ja esta funcional para tema, cor do tema, login e logout
 
 ## 3. Escopo funcional desejado
 
 O fluxo-alvo do produto continua este:
 
-* o usuário informa saldo líquido atual e saldo bruto atual por ativo
-* o usuário registra aportes, saques normais e saques extras separadamente
-* o app calcula automaticamente rendimento diário, acumulados e saldo consolidado
+* o usuario informa saldo liquido atual e saldo bruto atual por ativo
+* o usuario registra aportes, saques normais e saques extras separadamente
+* o app calcula automaticamente rendimento diario, acumulados e saldo consolidado
 
-Regras principais ainda válidas para a fase de implementação:
+Regras principais ainda validas para a fase de implementacao:
 
 * `capitalInvestido = valorInicial + soma(aportes) - soma(saquesExtras)`
 * `rendimentoLiquidoDia = saldoLiquidoAtual - saldoLiquidoAnterior - aportesDoDia + saquesNormaisDoDia + saquesExtrasDoDia`
@@ -143,39 +148,40 @@ Escopo-alvo por tela:
 
 `Home`
 
-* saldo total da carteira no período selecionado
+* saldo total da carteira no periodo selecionado
 * cards por ativo
-* leitura diária de saldo líquido e bruto
-* ações de aporte, saque normal e saque extra
-* recálculo automático após qualquer alteração
+* leitura diaria de saldo liquido e bruto
+* acoes de aporte, saque normal e saque extra
+* recalculo automatico apos qualquer alteracao
 
 `Resumo`
 
-* histórico diário por ativo
-* totais do mês e do ano
-* lista de transações por tipo
+* historico diario por ativo
+* totais do mes e do ano
+* lista de transacoes por tipo
+* paginacao e refinamentos finais da experiencia da tabela de movimentacoes
 
 `Ativos`
 
 * continuar como cadastro
-* manter edição no mesmo fluxo modal quando necessário
+* manter edicao no mesmo fluxo modal quando necessario
 
-`Configurações`
+`Configuracoes`
 
-* manter login, logout e preferências visuais
+* manter login, logout e preferencias visuais
 
 ## 4. Modelo de dados
 
 ### Estrutura em uso hoje
 
-Coleções realmente usadas pelo código atual:
+Colecoes realmente usadas pelo codigo atual:
 
 * `users/{uid}/configs/preferences`
 * `users/{uid}/periods/{periodId}`
 * `users/{uid}/assets/{assetId}`
 * `users/{uid}/assetMonthlyStates/{assetId}__{periodId}`
 
-Coleções que o código já considera e agora também pode popular:
+Colecoes que o codigo ja considera e agora tambem pode popular:
 
 * `users/{uid}/dailyReadings`
 * `users/{uid}/transactions`
@@ -190,31 +196,31 @@ Para o MVP completo, a estrutura mais coerente continua sendo:
 * `users/{uid}/dailyReadings`
 * `users/{uid}/transactions`
 
-Coleções de organização mais ampla continuam previstas, mas ainda fora da implementação real:
+Colecoes de organizacao mais ampla continuam previstas, mas ainda fora da implementacao real:
 
 * `users/{uid}/institutions`
 * `users/{uid}/accounts`
 * `users/{uid}/holdings`
 * `users/{uid}/snapshots`
 
-## 5. Mapa técnico do app
+## 5. Mapa tecnico do app
 
 Arquivos principais hoje:
 
-* `src/App.vue`: shell principal, auth, listeners, seleção de aba e modais de período
-* `src/views/HomeView.vue`: filtro de período, resumo visual e cards operacionais iniciais da Home
-* `src/views/ResumoView.vue`: resumo analítico com filtro anual por ativo e leitura do estado mensal
+* `src/App.vue`: shell principal, auth, listeners, selecao de aba e modais de periodo
+* `src/views/HomeView.vue`: filtro de periodo, resumo visual e cards operacionais iniciais da Home
+* `src/views/ResumoView.vue`: resumo analitico com filtro anual por ativo, leitura do estado mensal e tabela paginada de movimentacoes
 * `src/views/AtivosView.vue`: CRUD visual de ativos
-* `src/views/ConfiguracoesView.vue`: preferências e sessão
+* `src/views/ConfiguracoesView.vue`: preferencias e sessao
 * `src/services/firebase.js`: bootstrap do Firebase via `VITE_FIREBASE_*`
-* `src/services/periods.js`: IDs, listener e criação de períodos
-* `src/services/assets.js`: listeners de ativos e estados mensais, criação de ativo com estado mensal e exclusão em cascata
-* `src/services/homeActions.js`: grava leituras e transações originadas na Home e atualiza `assetMonthlyStates`
-* `public/sw.js`: cache básico do app shell e ativação de nova versão do PWA
-* `src/main.js`: registro versionado do service worker por build para exibir o banner de atualização como no `financas-app`
-* `.github/workflows/deploy-pages.yml`: deploy automático do GitHub Pages
+* `src/services/periods.js`: IDs, listener e criacao de periodos
+* `src/services/assets.js`: listeners de ativos e estados mensais, criacao de ativo com estado mensal e exclusao em cascata
+* `src/services/homeActions.js`: grava leituras e transacoes originadas na Home e atualiza `assetMonthlyStates`
+* `public/sw.js`: cache basico do app shell e ativacao de nova versao do PWA
+* `src/main.js`: registro versionado do service worker por build para exibir o banner de atualizacao como no `financas-app`
+* `.github/workflows/deploy-pages.yml`: deploy automatico do GitHub Pages
 
-## 6. Publicação e ambientes
+## 6. Publicacao e ambientes
 
 Scripts atuais:
 
@@ -234,23 +240,24 @@ Firebase atual:
 * app web: `investimentos-web`
 * Firestore default em `southamerica-east1`
 
-## 7. Divergências conhecidas para ajustar depois
+## 7. Divergencias conhecidas para ajustar depois
 
-Estas são as principais divergências entre a documentação antiga e o código atual:
+Estas sao as principais divergencias entre a documentacao antiga e o codigo atual:
 
-1. A documentação antiga descrevia `Home`, `Resumo`, leituras diárias, transações e cálculos como se estivessem implementados. Isso ainda não está pronto.
-2. O app real hoje usa principalmente `preferences`, `periods`, `assets` e `assetMonthlyStates`, mas a Home já também pode gravar em `dailyReadings` e `transactions`.
-3. Depois do login, o app abre `Home`. Alguns documentos antigos diziam que a primeira tela autenticada era `Configurações`.
-4. A exclusão de período hoje remove apenas o documento do período. Ela ainda não bloqueia a exclusão do único período existente, não faz cascata e não protege a consistência histórica.
-5. O total da carteira mostrado na `Home` ainda não está amarrado ao estado mensal recalculado, então o dashboard patrimonial superior ainda não reflete o Firestore em tempo real.
-6. A gravação da Home atualiza o estado mensal do período selecionado e, se ele não existir, cria um snapshot inicial com base no último estado conhecido do ativo.
-7. A regra de virada de mês com herança automática do estado final do mês anterior ainda não existe como rotina de backend dedicada.
-8. O período padrão inicial está fixo em abril de 2026, o que é útil para bootstrap, mas não é uma regra de produto definitiva.
+1. A documentacao antiga descrevia `Home`, `Resumo`, leituras diarias, transacoes e calculos como se estivessem implementados. Isso ainda nao esta pronto.
+2. O app real hoje usa principalmente `preferences`, `periods`, `assets` e `assetMonthlyStates`, mas a Home ja tambem pode gravar em `dailyReadings` e `transactions`.
+3. Depois do login, o app abre `Home`. Alguns documentos antigos diziam que a primeira tela autenticada era `Configuracoes`.
+4. A exclusao de periodo hoje remove apenas o documento do periodo. Ela ainda nao bloqueia a exclusao do unico periodo existente, nao faz cascata e nao protege a consistencia historica.
+5. O total da carteira mostrado na `Home` ainda nao esta amarrado ao estado mensal recalculado, entao o dashboard patrimonial superior ainda nao reflete o Firestore em tempo real.
+6. A gravacao da Home atualiza o estado mensal do periodo selecionado e, se ele nao existir, cria um snapshot inicial com base no ultimo estado conhecido do ativo.
+7. A regra de virada de mes com heranca automatica do estado final do mes anterior ainda nao existe como rotina de backend dedicada.
+8. O periodo padrao inicial esta fixo em abril de 2026, o que e util para bootstrap, mas nao e uma regra de produto definitiva.
+9. A tabela de movimentacoes do `Resumo` ainda usa massa fake temporaria para validar paginacao, coluna `Tipo` e comportamento responsivo antes da remocao final desses dados de teste.
 
-## 8. Regra de manutenção da documentação
+## 8. Regra de manutencao da documentacao
 
 Ao evoluir o app:
 
-* atualizar primeiro este arquivo se a implementação mudar comportamento, dados ou publicação
-* evitar recriar documentos separados para roadmap, Firebase, tema ou cálculos enquanto este arquivo continuar claro
-* se um novo arquivo voltar a ser necessário, ele deve existir para complementar este documento, nunca para repetir seu conteúdo
+* atualizar primeiro este arquivo se a implementacao mudar comportamento, dados ou publicacao
+* evitar recriar documentos separados para roadmap, Firebase, tema ou calculos enquanto este arquivo continuar claro
+* se um novo arquivo voltar a ser necessario, ele deve existir para complementar este documento, nunca para repetir seu conteudo

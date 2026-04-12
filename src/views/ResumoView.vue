@@ -1,6 +1,9 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 
+const MOVEMENTS_PER_PAGE = 5;
+const MOCK_MOVEMENT_TOTAL = 20;
+
 const props = defineProps({
 	assets: {
 		type: Array,
@@ -34,6 +37,7 @@ const totalInitialValue = computed(() =>
 );
 const selectedAnnualAssetIds = ref([]);
 const movementSortState = ref(getDefaultMovementSort());
+const movementPage = ref(1);
 
 watch(
 	activeAssets,
@@ -149,11 +153,33 @@ const assetMap = computed(() => {
 
 	return new Map(entries);
 });
+const mockMovementTransactions = computed(() => {
+	if (activeAssets.value.length === 0) {
+		return [];
+	}
+
+	return Array.from({ length: MOCK_MOVEMENT_TOTAL }, (_, index) => {
+		const asset = activeAssets.value[index % activeAssets.value.length];
+		const month = String((index % 12) + 1).padStart(2, "0");
+		const year = (props.selectedYear || 2026) - Math.floor(index / 12);
+
+		return {
+			id: `mock-transaction-${index + 1}`,
+			assetId: asset.id,
+			periodId: `${year}-${month}`,
+			transactionDate: `${year}-${month}-${String(((index * 3) % 27) + 1).padStart(2, "0")}`,
+			note: `Movimentacao fake ${index + 1}`,
+			amount: 750 + (index * 137),
+			type: index % 6 === 0 ? "extraWithdrawal" : index % 4 === 0 ? "withdrawal" : "contribution",
+		};
+	});
+});
 const movementRows = computed(() => {
 	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
 	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
+	const transactionEntries = [...props.transactions, ...mockMovementTransactions.value];
 
-	return props.transactions
+	return transactionEntries
 		.filter((transaction) => allowedTypes.includes(transaction.type) && selectedAnnualAssetIds.value.includes(transaction.assetId))
 		.map((transaction) => {
 			const asset = assetMap.value.get(transaction.assetId);
@@ -162,6 +188,8 @@ const movementRows = computed(() => {
 				id: transaction.id,
 				assetName: asset?.name || "Ativo removido",
 				assetColor: asset?.color || "#4F7CFF",
+				type: transaction.type,
+				typeLabel: formatMovementType(transaction.type),
 				periodLabel: formatPeriodLabel(transaction.periodId),
 				periodId: transaction.periodId,
 				transactionDate: transaction.transactionDate || "",
@@ -171,6 +199,35 @@ const movementRows = computed(() => {
 		})
 		.sort((leftRow, rightRow) => compareMovementRows(leftRow, rightRow) * multiplier);
 });
+const movementPageCount = computed(() => Math.max(1, Math.ceil(movementRows.value.length / MOVEMENTS_PER_PAGE)));
+const paginatedMovementRows = computed(() => {
+	const startIndex = (movementPage.value - 1) * MOVEMENTS_PER_PAGE;
+	return movementRows.value.slice(startIndex, startIndex + MOVEMENTS_PER_PAGE);
+});
+
+watch(
+	() => [
+		selectedAnnualAssetIds.value.join("|"),
+		movementSortState.value.key,
+		movementSortState.value.direction,
+		props.transactions.length,
+		activeAssets.value.length,
+		props.selectedYear,
+	],
+	() => {
+		movementPage.value = 1;
+	},
+);
+
+watch(
+	movementPageCount,
+	(nextPageCount) => {
+		if (movementPage.value > nextPageCount) {
+			movementPage.value = nextPageCount;
+		}
+	},
+	{ immediate: true },
+);
 
 function toggleAnnualAssetSelection(assetId) {
 	if (!assetId) {
@@ -215,6 +272,14 @@ function getMovementSortDirection(sortKey) {
 	return isMovementSortActive(sortKey) ? movementSortState.value.direction : "asc";
 }
 
+function goToMovementPage(nextPage) {
+	if (nextPage < 1 || nextPage > movementPageCount.value) {
+		return;
+	}
+
+	movementPage.value = nextPage;
+}
+
 function compareMovementRows(leftRow, rightRow) {
 	if (movementSortState.value.key === "date") {
 		const dateCompare = leftRow.transactionDate.localeCompare(rightRow.transactionDate, "pt-BR");
@@ -225,6 +290,10 @@ function compareMovementRows(leftRow, rightRow) {
 
 	if (movementSortState.value.key === "period") {
 		return leftRow.periodId.localeCompare(rightRow.periodId, "pt-BR");
+	}
+
+	if (movementSortState.value.key === "type") {
+		return leftRow.typeLabel.localeCompare(rightRow.typeLabel, "pt-BR", { sensitivity: "base" });
 	}
 
 	if (movementSortState.value.key === "note") {
@@ -249,6 +318,22 @@ function formatCurrency(value) {
 
 function formatValue(value) {
 	return value == null ? "--" : formatCurrency(value);
+}
+
+function formatMovementType(type) {
+	if (type === "contribution") {
+		return "Aporte";
+	}
+
+	if (type === "withdrawal") {
+		return "Saque";
+	}
+
+	if (type === "extraWithdrawal") {
+		return "Saque Extra";
+	}
+
+	return "--";
 }
 
 function getPeriodYear(periodId) {
@@ -513,6 +598,17 @@ function formatPeriodLabel(periodId) {
 								</button>
 							</th>
 							<th>
+								<button type="button" class="entry-sort-button" @click="toggleMovementSort('type')">
+									<span>Tipo</span>
+									<span class="sort-icon" :class="[getMovementSortDirection('type'), { active: isMovementSortActive('type') }]">
+										<svg viewBox="0 0 16 16" aria-hidden="true">
+											<path d="M8 3 12 7H4z" />
+											<path d="M8 13 4 9h8z" />
+										</svg>
+									</span>
+								</button>
+							</th>
+							<th>
 								<button type="button" class="entry-sort-button" @click="toggleMovementSort('note')">
 									<span>Motivo</span>
 									<span class="sort-icon" :class="[getMovementSortDirection('note'), { active: isMovementSortActive('note') }]">
@@ -538,7 +634,7 @@ function formatPeriodLabel(periodId) {
 					</thead>
 
 					<tbody v-if="movementRows.length > 0">
-						<tr v-for="row in movementRows" :key="row.id">
+						<tr v-for="row in paginatedMovementRows" :key="row.id">
 							<td>
 								<div class="asset-cell">
 									<span class="asset-dot" :style="{ '--asset-color': row.assetColor }" />
@@ -546,6 +642,7 @@ function formatPeriodLabel(periodId) {
 								</div>
 							</td>
 							<td>{{ row.periodLabel }}</td>
+							<td>{{ row.typeLabel }}</td>
 							<td>{{ row.note }}</td>
 							<td>{{ formatCurrency(row.amount) }}</td>
 						</tr>
@@ -553,13 +650,41 @@ function formatPeriodLabel(periodId) {
 
 					<tbody v-else>
 						<tr>
-							<td colspan="4" class="empty-row">
+							<td colspan="5" class="empty-row">
 								{{ selectedAnnualAssets.length > 0 ? "Nenhuma movimentação encontrada para os ativos selecionados." : "Cadastre um ativo para visualizar as movimentações." }}
 							</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
+
+			<footer v-if="movementRows.length > 0" class="pagination-bar" aria-label="Paginação de movimentações">
+				<button
+					type="button"
+					class="pagination-button"
+					:disabled="movementPage === 1"
+					aria-label="Página anterior"
+					@click="goToMovementPage(movementPage - 1)"
+				>
+					<svg viewBox="0 0 16 16" aria-hidden="true">
+						<path d="M10.5 3.5 6 8l4.5 4.5" />
+					</svg>
+				</button>
+
+				<span class="pagination-indicator">{{ movementPage }} / {{ movementPageCount }}</span>
+
+				<button
+					type="button"
+					class="pagination-button"
+					:disabled="movementPage === movementPageCount"
+					aria-label="Próxima página"
+					@click="goToMovementPage(movementPage + 1)"
+				>
+					<svg viewBox="0 0 16 16" aria-hidden="true">
+						<path d="M5.5 3.5 10 8l-4.5 4.5" />
+					</svg>
+				</button>
+			</footer>
 		</section>
 	</section>
 </template>
@@ -767,6 +892,9 @@ function formatPeriodLabel(periodId) {
 .empty-row {
 	text-align: center;
 	color: var(--text-soft);
+	white-space: normal !important;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .entry-sort-button {
@@ -785,6 +913,10 @@ function formatPeriodLabel(periodId) {
 }
 
 .entry-sort-button-start {
+	justify-content: flex-start;
+}
+
+.summary-table-movements .entry-sort-button {
 	justify-content: flex-start;
 }
 
@@ -831,12 +963,84 @@ function formatPeriodLabel(periodId) {
 	grid-column: 1 / -1;
 }
 
+.pagination-bar {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 12px 16px 16px;
+	border-top: 1px solid color-mix(in srgb, var(--glass-border) 86%, transparent);
+	background: color-mix(in srgb, var(--glass-surface-strong) 42%, transparent);
+}
+
+.pagination-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-soft);
+	cursor: pointer;
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		color 0.18s ease,
+		transform 0.18s ease,
+		box-shadow 0.18s ease;
+}
+
+.pagination-button svg {
+	width: 14px;
+	height: 14px;
+	display: block;
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.8;
+}
+
+.pagination-button:hover:not(:disabled) {
+	color: var(--text-h);
+}
+
+.pagination-button:focus-visible {
+	outline: none;
+	border-color: color-mix(in srgb, var(--color-primary) 54%, transparent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.pagination-button:disabled {
+	opacity: 0.42;
+	cursor: default;
+	transform: none;
+}
+
+.pagination-indicator {
+	min-width: 56px;
+	text-align: center;
+	font-size: 0.78rem;
+
+	letter-spacing: 0.08em;
+	color: var(--text-soft);
+}
+
 @media (max-width: 1023px) {
 	.summary-hero,
 	.summary-hero-stats,
 	.summary-grid {
 		grid-template-columns: 1fr;
 		display: grid;
+	}
+
+	.table-shell,
+	.table-shell-annual {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 }
 
@@ -857,12 +1061,10 @@ function formatPeriodLabel(periodId) {
 		width: 100%;
 	}
 
-	.table-shell {
-		overflow-x: visible;
-	}
-
+	.table-shell,
 	.table-shell-annual {
 		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.summary-grid .summary-table {
@@ -925,12 +1127,45 @@ function formatPeriodLabel(periodId) {
 
 	.summary-table-movements thead th:nth-child(3),
 	.summary-table-movements tbody td:nth-child(3) {
-		width: 40%;
+		width: 18%;
 	}
 
 	.summary-table-movements thead th:nth-child(4),
 	.summary-table-movements tbody td:nth-child(4) {
-		width: 20%;
+		width: 26%;
+	}
+
+	.summary-table-movements thead th:nth-child(5),
+	.summary-table-movements tbody td:nth-child(5) {
+		width: 16%;
+	}
+
+	.summary-table-movements thead th,
+	.summary-table-movements tbody td {
+		padding: 10px 8px;
+		font-size: 0.92rem;
+	}
+
+	.summary-table-movements thead th {
+		font-size: 0.78rem;
+	}
+
+	.summary-table-movements .asset-cell {
+		display: flex;
+		min-width: 0;
+		gap: 8px;
+	}
+
+	.summary-table-movements .asset-cell span:last-child {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.86rem;
+	}
+
+	.pagination-bar {
+		padding: 10px 12px 14px;
 	}
 }
 </style>

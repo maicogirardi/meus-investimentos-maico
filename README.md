@@ -4,18 +4,19 @@ Aplicativo pessoal de investimentos em Vue 3 + Vite, com Firebase Auth, Firestor
 
 ## Estado atual
 
-Hoje o projeto já tem:
+Hoje o projeto ja tem:
 
-* shell principal com as abas `Home`, `Resumo`, `Ativos` e `Configurações`
+* shell principal com as abas `Home`, `Resumo`, `Ativos` e `Configuracoes`
 * login e logout com Google
-* preferências do usuário em `users/{uid}/configs/preferences`
-* listeners realtime para preferências, períodos e ativos
-* criação e exclusão de períodos
-* cadastro e exclusão de ativos
-* criação automática de `assetMonthlyStates` ao cadastrar um ativo
+* preferencias do usuario em `users/{uid}/configs/preferences`
+* listeners realtime para preferencias, periodos e ativos
+* criacao e exclusao de periodos
+* cadastro e exclusao de ativos
+* criacao automatica de `assetMonthlyStates` ao cadastrar um ativo
+* tabela de movimentacoes no `Resumo` com ordenacao por coluna, coluna `Tipo` e paginacao de 5 itens por pagina
 * base visual e PWA alinhadas ao `financas-app`
 
-O motor completo de investimentos ainda não está pronto. `Home` e `Resumo` continuam em estado parcial, sem cálculos, leituras diárias e transações funcionando de ponta a ponta.
+O motor completo de investimentos ainda nao esta pronto. `Home` e `Resumo` continuam em estado parcial, sem calculos, leituras diarias e transacoes funcionando de ponta a ponta.
 
 ## Stack
 
@@ -40,16 +41,16 @@ O motor completo de investimentos ainda não está pronto. `Home` e `Resumo` con
 * GitHub Pages: `https://maicogirardi.github.io/meus-investimentos-maico/`
 * Firebase Hosting: `https://meus-investimentos-maico.web.app`
 
-## Configuração local
+## Configuracao local
 
 1. Copie `.env.example` para `.env` se precisar montar um novo ambiente.
-2. Preencha todas as variáveis `VITE_FIREBASE_*`.
+2. Preencha todas as variaveis `VITE_FIREBASE_*`.
 3. Rode `npm install`.
 4. Rode `npm run dev`.
 
-## Documentação
+## Documentacao
 
 * [AGENTS.md](./AGENTS.md)
 * [docs/product.md](./docs/product.md)
 
-`docs/product.md` agora é a fonte principal de verdade do projeto. Ele concentra produto, implementação atual, arquitetura prática, fluxo de publicação e divergências conhecidas entre a visão desejada e o que já existe no código.
+`docs/product.md` agora e a fonte principal de verdade do projeto. Ele concentra produto, implementacao atual, arquitetura pratica, fluxo de publicacao e divergencias conhecidas entre a visao desejada e o que ja existe no codigo.
