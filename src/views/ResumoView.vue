@@ -1024,7 +1024,6 @@ function formatPeriodLabel(periodId) {
 	min-width: 56px;
 	text-align: center;
 	font-size: 0.78rem;
-
 	letter-spacing: 0.08em;
 	color: var(--text-soft);
 }
