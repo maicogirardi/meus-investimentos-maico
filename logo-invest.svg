@@ -1,16 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="g" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#5fb0ff" />
-      <stop offset="100%" stop-color="#8fd4b6" />
+    <linearGradient id="bgGrad" x1="140" y1="120" x2="884" y2="904" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B2545"/>
+      <stop offset="1" stop-color="#071A33"/>
     </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="700" x2="0" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2F7FD6"/>
+      <stop offset="1" stop-color="#4EA7E3"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="700" x2="0" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2E86AF"/>
+      <stop offset="1" stop-color="#63B6D8"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="700" x2="0" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C8F92"/>
+      <stop offset="1" stop-color="#7BC9CB"/>
+    </linearGradient>
+    <linearGradient id="bar4" x1="0" y1="700" x2="0" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5EA46E"/>
+      <stop offset="1" stop-color="#A8D7A7"/>
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="260" y1="540" x2="820" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A8D6FF"/>
+      <stop offset="1" stop-color="#E5EFFC"/>
+    </linearGradient>
+    <filter id="softShadow" x="80" y="80" width="864" height="864" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="24" flood-color="#020B18" flood-opacity="0.35"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="108" fill="#0d1b2a" />
-  <circle cx="256" cy="256" r="184" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="24" />
-  <path
-    d="M126 330h70V196h-70zm95 0h70V148h-70zm95 0h70V232h-70z"
-    fill="url(#g)"
-  />
-  <path d="M114 382h284" stroke="#d8ecfb" stroke-linecap="round" stroke-width="24" />
+  <rect x="96" y="96" width="832" height="832" rx="180" fill="url(#bgGrad)"/>
+  <g filter="url(#softShadow)" transform="matrix(1, 0, 0, 1, -50.680202, 42.883247)">
+    <path d="M 262 720 L 863.482 720" stroke="#D8E6F7" stroke-width="28" stroke-linecap="round" opacity="0.96" style=""/>
+    <rect x="272" y="532" width="100" height="168" rx="2" fill="url(#bar1)"/>
+    <rect x="428" y="468" width="100" height="232" rx="2" fill="url(#bar2)"/>
+    <rect x="584" y="392" width="100" height="308" rx="2" fill="url(#bar3)"/>
+    <rect x="740" y="328" width="100" height="372" rx="2" fill="url(#bar4)"/>
+    <path d="M 268 505 L 480.117 267.716 L 632.609 358.609 L 841 238" stroke="url(#lineGrad)" stroke-width="28" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M825 196L882 220L857 280Z" fill="#E5EFFC"/>
+  </g>
 </svg>
-
