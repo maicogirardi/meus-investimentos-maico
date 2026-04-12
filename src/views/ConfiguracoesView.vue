@@ -202,6 +202,7 @@ function handleThemeToggle(event) {
 .settings-view {
 	display: grid;
 	width: 100%;
+	min-width: 0;
 	gap: 16px;
 	padding: 16px;
 	border: 1px solid var(--glass-border);
@@ -210,6 +211,7 @@ function handleThemeToggle(event) {
 	box-shadow: var(--shadow);
 	backdrop-filter: blur(22px);
 	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .settings-header h2 {
@@ -218,12 +220,15 @@ function handleThemeToggle(event) {
 
 .settings-card {
 	display: grid;
+	width: 100%;
+	min-width: 0;
 	gap: 12px;
 	padding: 16px;
 	border: 1px solid var(--input-border);
 	border-radius: 20px;
 	background: var(--glass-surface-strong);
 	backdrop-filter: blur(22px);
+	box-sizing: border-box;
 }
 
 .settings-row {
@@ -231,10 +236,12 @@ function handleThemeToggle(event) {
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
+	min-width: 0;
 }
 
 .settings-copy {
 	display: grid;
+	min-width: 0;
 	gap: 4px;
 }
 
@@ -257,18 +264,15 @@ function handleThemeToggle(event) {
 
 .field-group {
 	width: 100%;
+	min-width: 0;
 }
 
 .color-field {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 10px 12px;
 	margin-top: 10px;
-	border: 1px solid var(--glass-border);
-	border-radius: 16px;
-	background: var(--input-surface);
-	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	min-width: 0;
 }
 
 .color-picker {
@@ -339,6 +343,7 @@ function handleThemeToggle(event) {
 .settings-actions {
 	display: flex;
 	justify-content: flex-start;
+	min-width: 0;
 }
 
 .settings-actions button {
@@ -425,10 +430,25 @@ function handleThemeToggle(event) {
 .switch {
 	position: relative;
 	width: 54px;
+	min-width: 54px;
 	height: 32px;
 	display: inline-flex;
 	align-items: center;
 	cursor: pointer;
+}
+
+@media (max-width: 640px) {
+	.settings-card {
+		padding: 14px;
+	}
+
+	.settings-row {
+		align-items: flex-start;
+	}
+
+	.color-field {
+		gap: 10px;
+	}
 }
 
 .switch input {
