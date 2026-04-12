@@ -122,7 +122,6 @@ Campos criados hoje no estado mensal inicial:
 * tabela de movimentacoes ja possui ordenacao por ativo, periodo, tipo, motivo e valor
 * tabela de movimentacoes ja possui paginacao de 5 itens por pagina
 * coluna `Tipo` ja diferencia `Aporte`, `Saque` e `Saque Extra`
-* durante esta fase existe massa fake temporaria na view apenas para validar layout e paginacao
 * continua limitado aos dados que ja existem em `assetMonthlyStates`
 
 `Ativos` hoje:
@@ -258,7 +257,7 @@ Estas sao as principais divergencias entre a documentacao antiga e o codigo atua
 6. A gravacao da Home atualiza o estado mensal do periodo selecionado e, se ele nao existir, cria um snapshot inicial com base no ultimo estado conhecido do ativo.
 7. A regra de virada de mes com heranca automatica do estado final do mes anterior ainda nao existe como rotina de backend dedicada.
 8. O periodo padrao inicial esta fixo em abril de 2026, o que e util para bootstrap, mas nao e uma regra de produto definitiva.
-9. A tabela de movimentacoes do `Resumo` ainda usa massa fake temporaria para validar paginacao, coluna `Tipo` e comportamento responsivo antes da remocao final desses dados de teste.
+9. A tabela de movimentacoes do `Resumo` agora usa apenas dados reais de `transactions`, entao paginacao e ordenacao dependem do historico salvo no Firestore.
 
 ## 8. Regra de manutencao da documentacao
 

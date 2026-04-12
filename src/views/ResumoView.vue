@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 
 const MOVEMENTS_PER_PAGE = 5;
-const MOCK_MOVEMENT_TOTAL = 20;
 
 const props = defineProps({
 	assets: {
@@ -153,31 +152,10 @@ const assetMap = computed(() => {
 
 	return new Map(entries);
 });
-const mockMovementTransactions = computed(() => {
-	if (activeAssets.value.length === 0) {
-		return [];
-	}
-
-	return Array.from({ length: MOCK_MOVEMENT_TOTAL }, (_, index) => {
-		const asset = activeAssets.value[index % activeAssets.value.length];
-		const month = String((index % 12) + 1).padStart(2, "0");
-		const year = (props.selectedYear || 2026) - Math.floor(index / 12);
-
-		return {
-			id: `mock-transaction-${index + 1}`,
-			assetId: asset.id,
-			periodId: `${year}-${month}`,
-			transactionDate: `${year}-${month}-${String(((index * 3) % 27) + 1).padStart(2, "0")}`,
-			note: `Movimentacao fake ${index + 1}`,
-			amount: 750 + (index * 137),
-			type: index % 6 === 0 ? "extraWithdrawal" : index % 4 === 0 ? "withdrawal" : "contribution",
-		};
-	});
-});
 const movementRows = computed(() => {
 	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
 	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
-	const transactionEntries = [...props.transactions, ...mockMovementTransactions.value];
+	const transactionEntries = [...props.transactions];
 
 	return transactionEntries
 		.filter((transaction) => allowedTypes.includes(transaction.type) && selectedAnnualAssetIds.value.includes(transaction.assetId))
