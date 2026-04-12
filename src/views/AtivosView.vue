@@ -57,7 +57,7 @@ const summary = computed(() => ({
 }));
 const isEditingAsset = computed(() => Boolean(editingAssetId.value));
 const modalTitle = computed(() => (isEditingAsset.value ? "Editar ativo" : "Novo ativo"));
-const submitButtonLabel = computed(() => (isEditingAsset.value ? "Salvar alterações" : "Salvar ativo"));
+const submitButtonLabel = computed(() => "Salvar");
 const isNameMissing = computed(() => shouldShowValidation.value && !assetForm.name.trim());
 const isStartDateMissing = computed(() => shouldShowValidation.value && !assetForm.startDate);
 const isInitialValueMissing = computed(() => shouldShowValidation.value && assetForm.initialValue <= 0);
@@ -746,7 +746,6 @@ onBeforeUnmount(() => {
 			<div class="modal-card" @click.stop>
 				<header class="modal-header">
 					<h2>{{ modalTitle }}</h2>
-					<p>Os campos obrigatórios são nome, data inicial e valor inicial.</p>
 				</header>
 
 				<div class="modal-grid">
@@ -1383,12 +1382,9 @@ onBeforeUnmount(() => {
 	gap: 12px;
 	align-items: center;
 	min-height: 68px;
-	padding: 10px;
+	padding: 10px 14px;
 	border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--input-border));
 	border-radius: 18px;
-	background:
-		linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%),
-		var(--input-surface);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent),
 		inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -1630,8 +1626,13 @@ onBeforeUnmount(() => {
 	}
 
 	.asset-header {
-		flex-direction: column;
-		align-items: stretch;
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.asset-title-block {
+		min-width: 0;
+		flex: 1 1 auto;
 	}
 
 	.asset-info-table {
@@ -1653,7 +1654,6 @@ onBeforeUnmount(() => {
 
 	.modal-backdrop {
 		padding: 14px;
-		align-items: end;
 	}
 
 	.modal-card {
@@ -1667,7 +1667,13 @@ onBeforeUnmount(() => {
 	}
 
 	.modal-actions {
-		flex-direction: column;
+		flex-direction: row;
+		align-items: stretch;
+	}
+
+	.modal-actions > button {
+		flex: 1 1 0;
+		min-width: 0;
 	}
 }
 </style>
