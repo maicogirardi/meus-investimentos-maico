@@ -26,12 +26,43 @@ const props = defineProps({
 		type: String,
 		default: "",
 	},
+	canInstallApp: {
+		type: Boolean,
+		default: false,
+	},
+	isAppInstalled: {
+		type: Boolean,
+		default: false,
+	},
+	isInstallSupported: {
+		type: Boolean,
+		default: false,
+	},
+	isInstallingApp: {
+		type: Boolean,
+		default: false,
+	},
 });
 
-const emit = defineEmits(["update-theme", "update-theme-color", "login", "logout"]);
+const emit = defineEmits(["update-theme", "update-theme-color", "login", "logout", "install-app"]);
 
 const isDarkMode = computed(() => props.theme === "dark");
 const themeColorText = ref(props.themeColor);
+const installHelpText = computed(() => {
+	if (props.isAppInstalled) {
+		return "O app já está instalado neste dispositivo.";
+	}
+
+	if (props.canInstallApp) {
+		return "Toque no botão abaixo para instalar o app na tela inicial deste dispositivo.";
+	}
+
+	if (!props.isInstallSupported) {
+		return "Se estiver no iPhone ou iPad, abra o menu Compartilhar do Safari e use “Adicionar à Tela de Início”.";
+	}
+
+	return "Se o botão não aparecer, recarregue a página e abra o menu do navegador para instalar manualmente.";
+});
 
 watch(
 	() => props.themeColor,
@@ -107,6 +138,31 @@ function handleThemeToggle(event) {
 						placeholder="#AA3BFF"
 					/>
 				</div>
+			</div>
+		</div>
+
+		<div class="settings-card">
+			<div class="settings-copy">
+				<label class="settings-label">Instalar app</label>
+				<p class="settings-help">{{ installHelpText }}</p>
+			</div>
+
+			<div class="settings-actions">
+				<button
+					v-if="canInstallApp"
+					:disabled="isSubmitting || isInstallingApp"
+					type="button"
+					@click="$emit('install-app')"
+				>
+					{{ isInstallingApp ? "Abrindo instalador..." : "Instalar app" }}
+				</button>
+				<button
+					v-else
+					disabled
+					type="button"
+				>
+					{{ isAppInstalled ? "App instalado" : "Instalação indisponível" }}
+				</button>
 			</div>
 		</div>
 

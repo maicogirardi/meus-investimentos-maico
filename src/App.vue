@@ -37,7 +37,11 @@ const errorMessage = ref("");
 const currentUser = ref(null);
 const authReady = ref(false);
 const isUpdateAvailable = ref(false);
-const isInstallAvailable = ref(false);
+const isInstallSupported = ref(false);
+const canInstallApp = ref(false);
+const isAppInstalled = ref(false);
+const isInstallingApp = ref(false);
+const hasInstalledApp = ref(false);
 const currentPage = ref("home");
 const userPreferences = ref({ darkMode: true, themeColor: "#4f7cff" });
 const hasLoadedUiPreferences = ref(false);
@@ -71,6 +75,7 @@ let unsubscribeTransactions = null;
 let triggerAppUpdate = null;
 let deferredInstallPrompt = null;
 let isCreatingDefaultPeriod = false;
+const INSTALLED_APP_STORAGE_KEY = "meus-investimentos-installed";
 
 const monthOptions = Object.freeze([
 	{ value: 1, label: "Janeiro" },
@@ -450,33 +455,68 @@ function isRunningAsInstalledApp() {
 	return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
 
+function readInstalledAppFlag() {
+	try {
+		return window.localStorage.getItem(INSTALLED_APP_STORAGE_KEY) === "true";
+	} catch {
+		return false;
+	}
+}
+
+function writeInstalledAppFlag(value) {
+	try {
+		if (value) {
+			window.localStorage.setItem(INSTALLED_APP_STORAGE_KEY, "true");
+			return;
+		}
+
+		window.localStorage.removeItem(INSTALLED_APP_STORAGE_KEY);
+	} catch {
+		// Ignore storage errors for install UI state.
+	}
+}
+
+function syncInstallAvailability() {
+	isAppInstalled.value = hasInstalledApp.value || isRunningAsInstalledApp();
+	canInstallApp.value = Boolean(deferredInstallPrompt) && !isAppInstalled.value;
+}
+
 function handleBeforeInstallPrompt(event) {
 	if (isRunningAsInstalledApp()) {
 		return;
 	}
 
-	event.preventDefault();
 	deferredInstallPrompt = event;
-	isInstallAvailable.value = true;
+	syncInstallAvailability();
 }
 
 function handleAppInstalled() {
+	hasInstalledApp.value = true;
+	writeInstalledAppFlag(true);
 	deferredInstallPrompt = null;
-	isInstallAvailable.value = false;
+	isInstallingApp.value = false;
+	syncInstallAvailability();
 }
 
-async function promptInstallApp() {
-	if (!deferredInstallPrompt) {
+async function handleInstallApp() {
+	if (!deferredInstallPrompt || isInstallingApp.value) {
 		return;
 	}
 
-	deferredInstallPrompt.prompt();
+	isInstallingApp.value = true;
 
 	try {
-		await deferredInstallPrompt.userChoice;
-	} finally {
+		await deferredInstallPrompt.prompt();
+		const choice = await deferredInstallPrompt.userChoice;
+		if (choice?.outcome !== "accepted") {
+			isInstallingApp.value = false;
+		}
+
 		deferredInstallPrompt = null;
-		isInstallAvailable.value = false;
+		syncInstallAvailability();
+	} catch (error) {
+		console.error("Falha ao exibir o prompt de instalação", error);
+		isInstallingApp.value = false;
 	}
 }
 
@@ -840,11 +880,13 @@ watch(
 
 onMounted(() => {
 	applyTheme();
+	hasInstalledApp.value = readInstalledAppFlag();
+	isInstallSupported.value = "BeforeInstallPromptEvent" in window || /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+	syncInstallAvailability();
 	window.addEventListener("keydown", handleModalKeydown);
 	window.addEventListener("app-update-available", handleAppUpdateAvailable);
 	window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 	window.addEventListener("appinstalled", handleAppInstalled);
-	isInstallAvailable.value = !isRunningAsInstalledApp() && deferredInstallPrompt != null;
 
 	if (!auth) {
 		authReady.value = true;
@@ -904,21 +946,6 @@ onBeforeUnmount(() => {
 <template>
 	<AppLayout>
 		<div class="app-page">
-			<section v-if="isInstallAvailable" class="install-banner">
-				<div class="install-banner-copy">
-					<strong>Instale o app no dispositivo.</strong>
-					<span>Abra a carteira direto da tela inicial com experiência de PWA completa.</span>
-				</div>
-				<button class="primary-button" type="button" @click="promptInstallApp">
-					<span class="button-icon" aria-hidden="true">
-						<svg viewBox="0 0 24 24" fill="none">
-							<path d="M12 3.5v10m0 0 3.5-3.5M12 13.5 8.5 10M5 16.5h14" />
-						</svg>
-					</span>
-					Instalar app
-				</button>
-			</section>
-
 			<section v-if="isUpdateAvailable" class="update-banner">
 				<div class="update-banner-copy">
 					<strong>Nova versão disponível.</strong>
@@ -949,10 +976,15 @@ onBeforeUnmount(() => {
 				:is-authenticated="isAuthenticated"
 				:is-submitting="isSubmitting"
 				:auth-error="errorMessage"
+				:can-install-app="canInstallApp"
+				:is-app-installed="isAppInstalled"
+				:is-install-supported="isInstallSupported"
+				:is-installing-app="isInstallingApp"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
+				@install-app="handleInstallApp"
 			/>
 
 			<div v-else-if="!isDataReady" class="page-section status-card">
@@ -1008,10 +1040,15 @@ onBeforeUnmount(() => {
 				:is-authenticated="isAuthenticated"
 				:is-submitting="isSubmitting"
 				:auth-error="errorMessage"
+				:can-install-app="canInstallApp"
+				:is-app-installed="isAppInstalled"
+				:is-install-supported="isInstallSupported"
+				:is-installing-app="isInstallingApp"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
+				@install-app="handleInstallApp"
 			/>
 
 			<BottomTabs
@@ -1165,7 +1202,6 @@ onBeforeUnmount(() => {
 	justify-items: center;
 }
 
-.install-banner,
 .update-banner {
 	display: flex;
 	align-items: center;
@@ -1181,26 +1217,15 @@ onBeforeUnmount(() => {
 	backdrop-filter: blur(18px);
 }
 
-.install-banner {
-	border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--glass-border-strong));
-	background:
-		linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, transparent) 0%, transparent 68%),
-		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
-		color-mix(in srgb, var(--color-primary) 10%, var(--glass-surface-strong));
-}
-
-.install-banner-copy,
 .update-banner-copy {
 	display: grid;
 	gap: 4px;
 }
 
-.install-banner-copy strong,
 .update-banner-copy strong {
 	color: var(--text-h);
 }
 
-.install-banner-copy span,
 .update-banner-copy span {
 	font-size: 14px;
 	color: var(--text);
@@ -1456,7 +1481,6 @@ onBeforeUnmount(() => {
 		width: 100%;
 	}
 
-	.install-banner,
 	.update-banner {
 		flex-direction: column;
 		align-items: stretch;
