@@ -7,6 +7,10 @@ const OFFLINE_URLS = [
   `${APP_BASE}manifest.webmanifest`,
   `${APP_BASE}favicon.svg`,
   `${APP_BASE}logo-invest.svg`,
+  `${APP_BASE}icons/icon-192.png`,
+  `${APP_BASE}icons/icon-512.png`,
+  `${APP_BASE}icons/icon-maskable-512.png`,
+  `${APP_BASE}icons/apple-touch-icon.png`,
 ];
 
 self.addEventListener("install", (event) => {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bgGrad" x1="140" y1="120" x2="884" y2="904" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bgGrad" x1="140" y1="120" x2="884" y2="904" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1.212417, 0, 0, 1.212417, -108.757515, -108.757515)">
       <stop offset="0" stop-color="#0B2545"/>
       <stop offset="1" stop-color="#071A33"/>
     </linearGradient>
@@ -29,8 +29,8 @@
       <feDropShadow dx="0" dy="14" stdDeviation="24" flood-color="#020B18" flood-opacity="0.35"/>
     </filter>
   </defs>
-  <rect x="96" y="96" width="832" height="832" rx="180" fill="url(#bgGrad)"/>
-  <g filter="url(#softShadow)" transform="matrix(1, 0, 0, 1, -50.680202, 42.883247)">
+  <rect x="7.635" y="7.635" width="1008.73" height="1008.73" rx="180" fill="url(#bgGrad)" style=""/>
+  <g filter="url(#softShadow)" transform="matrix(1.212417, 0, 0, 1.212417, -170.203064, -56.765137)" style="">
     <path d="M 262 720 L 863.482 720" stroke="#D8E6F7" stroke-width="28" stroke-linecap="round" opacity="0.96" style=""/>
     <rect x="272" y="532" width="100" height="168" rx="2" fill="url(#bar1)"/>
     <rect x="428" y="468" width="100" height="232" rx="2" fill="url(#bar2)"/>

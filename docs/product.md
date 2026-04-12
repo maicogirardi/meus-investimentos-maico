@@ -39,6 +39,8 @@ O projeto ja possui navegacao principal com quatro abas:
 
 A base visual, o tema, a navegacao inferior, o service worker e o banner de atualizacao seguem o mesmo raciocinio do `financas-app`.
 
+O pacote PWA agora inclui icones PNG dedicados para instalacao em navegadores mobile e suporte a icone maskable.
+
 ### Autenticacao e preferencias
 
 Ja funciona hoje:
