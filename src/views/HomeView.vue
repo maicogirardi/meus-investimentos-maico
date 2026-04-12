@@ -64,7 +64,7 @@ function formatDate(value) {
 		return String(value);
 	}
 
-	return new Intl.DateTimeFormat("pt-BR").format(new Date(Number(year), Number(month) - 1, Number(day)));
+	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
 function handleWindowScroll() {

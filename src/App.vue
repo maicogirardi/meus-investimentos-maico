@@ -6,7 +6,13 @@ import BottomTabs from "./components/navigation/BottomTabs.vue";
 import AppSelect from "./components/ui/AppSelect.vue";
 import { appMeta } from "./config/appConfig";
 import AppLayout from "./layout/AppLayout.vue";
-import { createAssetWithMonthlyState, deleteAssetCascade, subscribeAssets, updateAssetWithInitialMonthlyState } from "./services/assets";
+import {
+	createAssetWithMonthlyState,
+	deleteAssetCascade,
+	subscribeAssetMonthlyStates,
+	subscribeAssets,
+	updateAssetWithInitialMonthlyState,
+} from "./services/assets";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -34,11 +40,13 @@ const userPreferences = ref({ darkMode: true, themeColor: "#4f7cff" });
 const hasLoadedUiPreferences = ref(false);
 const hasLoadedPeriods = ref(false);
 const hasLoadedAssets = ref(false);
+const hasLoadedMonthlyStates = ref(false);
 const preferredPeriod = ref({ year: null, month: null });
 const selectedYear = ref(null);
 const selectedMonth = ref(null);
 const periods = ref([]);
 const assets = ref([]);
+const assetMonthlyStates = ref([]);
 const isPeriodModalOpen = ref(false);
 const isDeletePeriodModalOpen = ref(false);
 const periodModalYear = ref(today.getFullYear());
@@ -52,6 +60,7 @@ let unsubscribeAuth = null;
 let unsubscribePreferences = null;
 let unsubscribePeriods = null;
 let unsubscribeAssets = null;
+let unsubscribeAssetMonthlyStates = null;
 let triggerAppUpdate = null;
 let isCreatingDefaultPeriod = false;
 
@@ -136,7 +145,10 @@ const isPeriodMonthInvalid = computed(() =>
 const isPeriodFormInvalid = computed(() => isPeriodYearInvalid.value || isPeriodMonthInvalid.value);
 const isDataReady = computed(() =>
 	authReady.value &&
-	(!isAuthenticated.value || (hasLoadedUiPreferences.value && hasLoadedPeriods.value && hasLoadedAssets.value)),
+	(
+		!isAuthenticated.value ||
+		(hasLoadedUiPreferences.value && hasLoadedPeriods.value && hasLoadedAssets.value && hasLoadedMonthlyStates.value)
+	),
 );
 const navigationTabs = computed(() => {
 	if (!isAuthenticated.value) {
@@ -216,8 +228,14 @@ function applyTheme() {
 }
 
 function buildMonthLabel(year, month) {
-	const monthEntry = monthOptions.find((option) => option.value === month);
-	return monthEntry ? `${monthEntry.label} de ${year}` : String(year);
+	const normalizedYear = Number(year);
+	const normalizedMonth = Number(month);
+
+	if (!Number.isInteger(normalizedYear) || !Number.isInteger(normalizedMonth) || normalizedMonth < 1 || normalizedMonth > 12) {
+		return String(year || "");
+	}
+
+	return `${String(normalizedMonth).padStart(2, "0")}/${normalizedYear}`;
 }
 
 function periodExists(year, month) {
@@ -350,6 +368,15 @@ function listenAssets(uid) {
 	});
 }
 
+function listenAssetMonthlyStates(uid) {
+	hasLoadedMonthlyStates.value = false;
+	unsubscribeAssetMonthlyStates?.();
+	unsubscribeAssetMonthlyStates = subscribeAssetMonthlyStates(uid, (nextMonthlyStates) => {
+		assetMonthlyStates.value = nextMonthlyStates;
+		hasLoadedMonthlyStates.value = true;
+	});
+}
+
 async function handleGoogleSignIn() {
 	if (!auth) {
 		errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
@@ -400,11 +427,14 @@ function clearUserState() {
 	unsubscribePreferences?.();
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
+	unsubscribeAssetMonthlyStates?.();
 	periods.value = [];
 	assets.value = [];
+	assetMonthlyStates.value = [];
 	hasLoadedUiPreferences.value = false;
 	hasLoadedPeriods.value = false;
 	hasLoadedAssets.value = false;
+	hasLoadedMonthlyStates.value = false;
 	preferredPeriod.value = { year: null, month: null };
 	userPreferences.value = { darkMode: true, themeColor: "#4f7cff" };
 	selectedYear.value = defaultPeriod.year;
@@ -725,6 +755,7 @@ onMounted(() => {
 			listenPreferences(user.uid);
 			listenPeriods(user.uid);
 			listenAssets(user.uid);
+			listenAssetMonthlyStates(user.uid);
 			return;
 		}
 
@@ -754,6 +785,7 @@ onBeforeUnmount(() => {
 	unsubscribePreferences?.();
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
+	unsubscribeAssetMonthlyStates?.();
 });
 </script>
 
@@ -819,8 +851,10 @@ onBeforeUnmount(() => {
 			<ResumoView
 				v-else-if="currentPage === 'summary'"
 				:assets="assets"
+				:monthly-states="assetMonthlyStates"
 				:period-label="periodLabel"
 				:selected-year="selectedYear"
+				:selected-period-id="selectedPeriodId"
 			/>
 
 			<AtivosView

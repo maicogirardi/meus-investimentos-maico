@@ -55,6 +55,50 @@ export function subscribeAssets(uid, callback) {
 	});
 }
 
+export function subscribeAssetMonthlyStates(uid, callback) {
+	const db = getFirebaseDb();
+	if (!db || !uid) {
+		return () => {};
+	}
+
+	const monthlyStatesCollection = collection(db, "users", uid, "assetMonthlyStates");
+
+	return onSnapshot(monthlyStatesCollection, (snapshot) => {
+		const monthlyStates = snapshot.docs
+			.map((monthlyStateDoc) => {
+				const data = monthlyStateDoc.data() || {};
+				return {
+					id: monthlyStateDoc.id,
+					assetId: normalizeText(data.assetId),
+					periodId: normalizeText(data.periodId),
+					openingCapitalInvested: normalizeAmount(data.openingCapitalInvested),
+					currentCapitalInvested: normalizeAmount(data.currentCapitalInvested),
+					openingLiquidBalance: normalizeAmount(data.openingLiquidBalance),
+					currentLiquidBalance: normalizeAmount(data.currentLiquidBalance),
+					openingGrossBalance: normalizeAmount(data.openingGrossBalance),
+					currentGrossBalance: normalizeAmount(data.currentGrossBalance),
+					monthNetIncome: normalizeAmount(data.monthNetIncome),
+					monthGrossIncome: normalizeAmount(data.monthGrossIncome),
+					monthContributions: normalizeAmount(data.monthContributions),
+					monthNormalWithdrawals: normalizeAmount(data.monthNormalWithdrawals),
+					monthExtraWithdrawals: normalizeAmount(data.monthExtraWithdrawals),
+					lastReadingDate: normalizeText(data.lastReadingDate),
+				};
+			})
+			.filter((monthlyState) => monthlyState.assetId && monthlyState.periodId)
+			.sort((leftState, rightState) => {
+				const periodCompare = leftState.periodId.localeCompare(rightState.periodId, "pt-BR");
+				if (periodCompare !== 0) {
+					return periodCompare;
+				}
+
+				return leftState.assetId.localeCompare(rightState.assetId, "pt-BR", { sensitivity: "base" });
+			});
+
+		callback(monthlyStates);
+	});
+}
+
 export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {

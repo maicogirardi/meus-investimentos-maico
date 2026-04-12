@@ -108,8 +108,10 @@ Campos criados hoje no estado mensal inicial:
 
 `Resumo` hoje:
 
-* já possui layout inicial para saldo anual, líquido, rendimento bruto e saques
-* ainda usa placeholders onde os cálculos reais da Home ainda não existem
+* consome `assets` e `assetMonthlyStates` em realtime
+* saldo anual já pode ser filtrado por ativo com pills no cabeçalho
+* rendimento líquido, rendimento bruto e saques já mostram o nome e a cor de cada ativo
+* continua limitado aos dados que já existem em `assetMonthlyStates`
 
 `Ativos` hoje:
 
@@ -198,12 +200,12 @@ Arquivos principais hoje:
 
 * `src/App.vue`: shell principal, auth, listeners, seleção de aba e modais de período
 * `src/views/HomeView.vue`: filtro de período, resumo visual e cards operacionais iniciais da Home
-* `src/views/ResumoView.vue`: layout inicial do resumo analítico
+* `src/views/ResumoView.vue`: resumo analítico com filtro anual por ativo e leitura do estado mensal
 * `src/views/AtivosView.vue`: CRUD visual de ativos
 * `src/views/ConfiguracoesView.vue`: preferências e sessão
 * `src/services/firebase.js`: bootstrap do Firebase via `VITE_FIREBASE_*`
 * `src/services/periods.js`: IDs, listener e criação de períodos
-* `src/services/assets.js`: listener, criação de ativo com estado mensal e exclusão em cascata
+* `src/services/assets.js`: listeners de ativos e estados mensais, criação de ativo com estado mensal e exclusão em cascata
 * `public/sw.js`: cache básico e fluxo de atualização do PWA
 * `.github/workflows/deploy-pages.yml`: deploy automático do GitHub Pages
 
