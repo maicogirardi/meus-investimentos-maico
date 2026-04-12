@@ -11,6 +11,7 @@ import {
 	deleteAssetCascade,
 	subscribeAssetMonthlyStates,
 	subscribeAssets,
+	subscribeTransactions,
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
 import { saveHomeAssetAction } from "./services/homeActions";
@@ -42,12 +43,14 @@ const hasLoadedUiPreferences = ref(false);
 const hasLoadedPeriods = ref(false);
 const hasLoadedAssets = ref(false);
 const hasLoadedMonthlyStates = ref(false);
+const hasLoadedTransactions = ref(false);
 const preferredPeriod = ref({ year: null, month: null });
 const selectedYear = ref(null);
 const selectedMonth = ref(null);
 const periods = ref([]);
 const assets = ref([]);
 const assetMonthlyStates = ref([]);
+const transactions = ref([]);
 const isPeriodModalOpen = ref(false);
 const isDeletePeriodModalOpen = ref(false);
 const periodModalYear = ref(today.getFullYear());
@@ -63,6 +66,7 @@ let unsubscribePreferences = null;
 let unsubscribePeriods = null;
 let unsubscribeAssets = null;
 let unsubscribeAssetMonthlyStates = null;
+let unsubscribeTransactions = null;
 let triggerAppUpdate = null;
 let isCreatingDefaultPeriod = false;
 
@@ -149,7 +153,13 @@ const isDataReady = computed(() =>
 	authReady.value &&
 	(
 		!isAuthenticated.value ||
-		(hasLoadedUiPreferences.value && hasLoadedPeriods.value && hasLoadedAssets.value && hasLoadedMonthlyStates.value)
+		(
+			hasLoadedUiPreferences.value
+			&& hasLoadedPeriods.value
+			&& hasLoadedAssets.value
+			&& hasLoadedMonthlyStates.value
+			&& hasLoadedTransactions.value
+		)
 	),
 );
 const navigationTabs = computed(() => {
@@ -379,6 +389,15 @@ function listenAssetMonthlyStates(uid) {
 	});
 }
 
+function listenTransactions(uid) {
+	hasLoadedTransactions.value = false;
+	unsubscribeTransactions?.();
+	unsubscribeTransactions = subscribeTransactions(uid, (nextTransactions) => {
+		transactions.value = nextTransactions;
+		hasLoadedTransactions.value = true;
+	});
+}
+
 async function handleGoogleSignIn() {
 	if (!auth) {
 		errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
@@ -430,13 +449,16 @@ function clearUserState() {
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
 	unsubscribeAssetMonthlyStates?.();
+	unsubscribeTransactions?.();
 	periods.value = [];
 	assets.value = [];
 	assetMonthlyStates.value = [];
+	transactions.value = [];
 	hasLoadedUiPreferences.value = false;
 	hasLoadedPeriods.value = false;
 	hasLoadedAssets.value = false;
 	hasLoadedMonthlyStates.value = false;
+	hasLoadedTransactions.value = false;
 	preferredPeriod.value = { year: null, month: null };
 	userPreferences.value = { darkMode: true, themeColor: "#4f7cff" };
 	selectedYear.value = defaultPeriod.year;
@@ -803,6 +825,7 @@ onMounted(() => {
 			listenPeriods(user.uid);
 			listenAssets(user.uid);
 			listenAssetMonthlyStates(user.uid);
+			listenTransactions(user.uid);
 			return;
 		}
 
@@ -833,6 +856,7 @@ onBeforeUnmount(() => {
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
 	unsubscribeAssetMonthlyStates?.();
+	unsubscribeTransactions?.();
 });
 </script>
 
@@ -901,6 +925,7 @@ onBeforeUnmount(() => {
 				v-else-if="currentPage === 'summary'"
 				:assets="assets"
 				:monthly-states="assetMonthlyStates"
+				:transactions="transactions"
 				:period-label="periodLabel"
 				:selected-year="selectedYear"
 				:selected-period-id="selectedPeriodId"

@@ -10,6 +10,10 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	transactions: {
+		type: Array,
+		default: () => [],
+	},
 	periodLabel: {
 		type: String,
 		default: "",
@@ -29,6 +33,7 @@ const totalInitialValue = computed(() =>
 	activeAssets.value.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
 );
 const selectedAnnualAssetIds = ref([]);
+const movementSortState = ref(getDefaultMovementSort());
 
 watch(
 	activeAssets,
@@ -133,6 +138,39 @@ const periodTotals = computed(() => ({
 	grossIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.grossIncome || 0), 0),
 	withdrawals: assetPeriodRows.value.reduce((total, row) => total + Number(row.withdrawals || 0), 0),
 }));
+const assetMap = computed(() => {
+	const entries = activeAssets.value.map((asset) => [
+		asset.id,
+		{
+			name: asset.name,
+			color: asset.color || "#4F7CFF",
+		},
+	]);
+
+	return new Map(entries);
+});
+const movementRows = computed(() => {
+	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
+	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
+
+	return props.transactions
+		.filter((transaction) => allowedTypes.includes(transaction.type) && selectedAnnualAssetIds.value.includes(transaction.assetId))
+		.map((transaction) => {
+			const asset = assetMap.value.get(transaction.assetId);
+
+			return {
+				id: transaction.id,
+				assetName: asset?.name || "Ativo removido",
+				assetColor: asset?.color || "#4F7CFF",
+				periodLabel: formatPeriodLabel(transaction.periodId),
+				periodId: transaction.periodId,
+				transactionDate: transaction.transactionDate || "",
+				note: transaction.note || "--",
+				amount: Number(transaction.amount || 0),
+			};
+		})
+		.sort((leftRow, rightRow) => compareMovementRows(leftRow, rightRow) * multiplier);
+});
 
 function toggleAnnualAssetSelection(assetId) {
 	if (!assetId) {
@@ -149,6 +187,55 @@ function toggleAnnualAssetSelection(assetId) {
 	}
 
 	selectedAnnualAssetIds.value = [...selectedAnnualAssetIds.value, assetId];
+}
+
+function getDefaultMovementSort(sortKey = "period") {
+	return {
+		key: sortKey,
+		direction: "asc",
+	};
+}
+
+function toggleMovementSort(sortKey) {
+	const currentState = movementSortState.value;
+
+	movementSortState.value = currentState.key === sortKey
+		? {
+			key: sortKey,
+			direction: currentState.direction === "asc" ? "desc" : "asc",
+		}
+		: getDefaultMovementSort(sortKey);
+}
+
+function isMovementSortActive(sortKey) {
+	return movementSortState.value.key === sortKey;
+}
+
+function getMovementSortDirection(sortKey) {
+	return isMovementSortActive(sortKey) ? movementSortState.value.direction : "asc";
+}
+
+function compareMovementRows(leftRow, rightRow) {
+	if (movementSortState.value.key === "date") {
+		const dateCompare = leftRow.transactionDate.localeCompare(rightRow.transactionDate, "pt-BR");
+		if (dateCompare !== 0) {
+			return dateCompare;
+		}
+	}
+
+	if (movementSortState.value.key === "period") {
+		return leftRow.periodId.localeCompare(rightRow.periodId, "pt-BR");
+	}
+
+	if (movementSortState.value.key === "note") {
+		return leftRow.note.localeCompare(rightRow.note, "pt-BR", { sensitivity: "base" });
+	}
+
+	if (movementSortState.value.key === "amount") {
+		return leftRow.amount - rightRow.amount;
+	}
+
+	return leftRow.assetName.localeCompare(rightRow.assetName, "pt-BR", { sensitivity: "base" });
 }
 
 function formatCurrency(value) {
@@ -393,6 +480,87 @@ function formatPeriodLabel(periodId) {
 				</div>
 			</section>
 		</section>
+
+		<section class="summary-table-card">
+			<header class="table-header">
+				<h3>Movimenta&ccedil;&otilde;es</h3>
+			</header>
+
+			<div class="table-shell">
+				<table class="summary-table summary-table-movements">
+					<thead>
+						<tr>
+							<th>
+								<button type="button" class="entry-sort-button entry-sort-button-start" @click="toggleMovementSort('asset')">
+									<span>Ativo</span>
+									<span class="sort-icon" :class="[getMovementSortDirection('asset'), { active: isMovementSortActive('asset') }]">
+										<svg viewBox="0 0 16 16" aria-hidden="true">
+											<path d="M8 3 12 7H4z" />
+											<path d="M8 13 4 9h8z" />
+										</svg>
+									</span>
+								</button>
+							</th>
+							<th>
+								<button type="button" class="entry-sort-button" @click="toggleMovementSort('period')">
+									<span>Per&iacute;odo</span>
+									<span class="sort-icon" :class="[getMovementSortDirection('period'), { active: isMovementSortActive('period') }]">
+										<svg viewBox="0 0 16 16" aria-hidden="true">
+											<path d="M8 3 12 7H4z" />
+											<path d="M8 13 4 9h8z" />
+										</svg>
+									</span>
+								</button>
+							</th>
+							<th>
+								<button type="button" class="entry-sort-button" @click="toggleMovementSort('note')">
+									<span>Motivo</span>
+									<span class="sort-icon" :class="[getMovementSortDirection('note'), { active: isMovementSortActive('note') }]">
+										<svg viewBox="0 0 16 16" aria-hidden="true">
+											<path d="M8 3 12 7H4z" />
+											<path d="M8 13 4 9h8z" />
+										</svg>
+									</span>
+								</button>
+							</th>
+							<th>
+								<button type="button" class="entry-sort-button" @click="toggleMovementSort('amount')">
+									<span>Valor</span>
+									<span class="sort-icon" :class="[getMovementSortDirection('amount'), { active: isMovementSortActive('amount') }]">
+										<svg viewBox="0 0 16 16" aria-hidden="true">
+											<path d="M8 3 12 7H4z" />
+											<path d="M8 13 4 9h8z" />
+										</svg>
+									</span>
+								</button>
+							</th>
+						</tr>
+					</thead>
+
+					<tbody v-if="movementRows.length > 0">
+						<tr v-for="row in movementRows" :key="row.id">
+							<td>
+								<div class="asset-cell">
+									<span class="asset-dot" :style="{ '--asset-color': row.assetColor }" />
+									<span>{{ row.assetName }}</span>
+								</div>
+							</td>
+							<td>{{ row.periodLabel }}</td>
+							<td>{{ row.note }}</td>
+							<td>{{ formatCurrency(row.amount) }}</td>
+						</tr>
+					</tbody>
+
+					<tbody v-else>
+						<tr>
+							<td colspan="4" class="empty-row">
+								{{ selectedAnnualAssets.length > 0 ? "Nenhuma movimentação encontrada para os ativos selecionados." : "Cadastre um ativo para visualizar as movimentações." }}
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
 	</section>
 </template>
 
@@ -549,9 +717,19 @@ function formatPeriodLabel(periodId) {
 	text-align: left;
 	font-size: 0.84rem;
 	font-weight: 700;
-	background: color-mix(in srgb, var(--color-primary) 42%, white 38%);
-	color: color-mix(in srgb, #08111f 82%, var(--color-primary) 18%);
+	border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--glass-divider));
+	background:
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--color-primary) 18%, var(--glass-surface-strong)) 0%,
+			color-mix(in srgb, var(--color-primary) 10%, var(--glass-surface)) 100%
+		);
+	color: var(--text-h);
 	white-space: nowrap;
+}
+
+.summary-table thead th .entry-sort-button {
+	width: 100%;
 }
 
 .summary-table tbody td {
@@ -589,6 +767,58 @@ function formatPeriodLabel(periodId) {
 .empty-row {
 	text-align: center;
 	color: var(--text-soft);
+}
+
+.entry-sort-button {
+	display: inline-flex;
+	align-items: flex-end;
+	justify-content: center;
+	gap: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-weight: inherit;
+	cursor: pointer;
+	user-select: none;
+}
+
+.entry-sort-button-start {
+	justify-content: flex-start;
+}
+
+.entry-sort-button:hover {
+	color: inherit;
+}
+
+.sort-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	align-self: flex-end;
+	color: currentColor;
+	transition: transform 0.18s ease;
+}
+
+.sort-icon svg {
+	width: 18px;
+	height: 18px;
+	fill: currentColor;
+}
+
+.sort-icon.active {
+	color: var(--color-primary);
+}
+
+.sort-icon.asc {
+	transform: rotate(0deg);
+}
+
+.sort-icon.desc {
+	transform: rotate(180deg);
 }
 
 .summary-grid {
@@ -681,6 +911,26 @@ function formatPeriodLabel(periodId) {
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 0.86rem;
+	}
+
+	.summary-table-movements thead th:nth-child(1),
+	.summary-table-movements tbody td:nth-child(1) {
+		width: 24%;
+	}
+
+	.summary-table-movements thead th:nth-child(2),
+	.summary-table-movements tbody td:nth-child(2) {
+		width: 16%;
+	}
+
+	.summary-table-movements thead th:nth-child(3),
+	.summary-table-movements tbody td:nth-child(3) {
+		width: 40%;
+	}
+
+	.summary-table-movements thead th:nth-child(4),
+	.summary-table-movements tbody td:nth-child(4) {
+		width: 20%;
 	}
 }
 </style>

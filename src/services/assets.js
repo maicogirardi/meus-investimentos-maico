@@ -99,6 +99,47 @@ export function subscribeAssetMonthlyStates(uid, callback) {
 	});
 }
 
+export function subscribeTransactions(uid, callback) {
+	const db = getFirebaseDb();
+	if (!db || !uid) {
+		return () => {};
+	}
+
+	const transactionsCollection = collection(db, "users", uid, "transactions");
+
+	return onSnapshot(transactionsCollection, (snapshot) => {
+		const transactions = snapshot.docs
+			.map((transactionDoc) => {
+				const data = transactionDoc.data() || {};
+				return {
+					id: transactionDoc.id,
+					assetId: normalizeText(data.assetId),
+					periodId: normalizeText(data.periodId),
+					type: normalizeText(data.type),
+					amount: normalizeAmount(data.amount),
+					note: normalizeText(data.note),
+					transactionDate: normalizeText(data.transactionDate),
+				};
+			})
+			.filter((transaction) => transaction.assetId && transaction.periodId && transaction.type)
+			.sort((leftTransaction, rightTransaction) => {
+				const dateCompare = rightTransaction.transactionDate.localeCompare(leftTransaction.transactionDate, "pt-BR");
+				if (dateCompare !== 0) {
+					return dateCompare;
+				}
+
+				const periodCompare = rightTransaction.periodId.localeCompare(leftTransaction.periodId, "pt-BR");
+				if (periodCompare !== 0) {
+					return periodCompare;
+				}
+
+				return rightTransaction.id.localeCompare(leftTransaction.id, "pt-BR", { sensitivity: "base" });
+			});
+
+		callback(transactions);
+	});
+}
+
 export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {

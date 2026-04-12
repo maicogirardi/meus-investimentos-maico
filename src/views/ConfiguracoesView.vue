@@ -256,15 +256,27 @@ function handleThemeToggle(event) {
 	flex: 1;
 	min-width: 0;
 	height: 40px;
-	border: 0;
-	padding: 0 0 0 6px;
-	background: transparent;
-	color: var(--text);
+	padding: 0 14px;
+	border: 1px solid var(--input-border);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--input-surface) 88%, transparent);
+	color: var(--input-text);
 	font: inherit;
+	outline: none;
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		box-shadow 0.18s ease,
+		color 0.18s ease;
+}
+
+.color-code-input::placeholder {
+	color: var(--input-placeholder);
 }
 
 .color-code-input:focus-visible {
-	border-radius: 12px;
+	border-color: var(--input-focus-border);
+	background: color-mix(in srgb, var(--input-surface) 96%, transparent);
 	box-shadow: 0 0 0 4px var(--input-focus-ring);
 }
 
