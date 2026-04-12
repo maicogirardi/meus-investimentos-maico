@@ -48,6 +48,7 @@ Coleções iniciais previstas no Firestore:
 Quando o usuário pedir para publicar, o fluxo padrão deve ser:
 
 - revisar mudanças relevantes
+- incluir por padrão nos commits e publicações todas as modificações locais feitas pelo usuário, salvo quando ele pedir explicitamente para separar ou excluir algo
 - atualizar documentação `.md` impactada
 - criar commit
 - enviar para o branch remoto principal

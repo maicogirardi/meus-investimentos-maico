@@ -59,7 +59,7 @@ defineEmits(["select"]);
       :title="tab.label"
       @click="$emit('select', tab.value)"
     >
-      <span class="tab-icon" aria-hidden="true">
+      <span class="tab-icon" :class="`tab-icon--${tab.icon || 'home'}`" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" class="tab-icon-svg">
           <path
             v-for="iconPath in getIconPaths(tab.icon || 'home')"
@@ -167,6 +167,10 @@ defineEmits(["select"]);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.tab-icon--wallet .tab-icon-svg {
+	transform: translateX(1.25px);
 }
 
 @media (max-width: 640px) {

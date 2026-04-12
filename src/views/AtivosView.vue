@@ -51,10 +51,6 @@ const assetForm = reactive({
 	initialValue: 0,
 });
 
-const summary = computed(() => ({
-	count: props.assets.length,
-	totalInitialValue: props.assets.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
-}));
 const isEditingAsset = computed(() => Boolean(editingAssetId.value));
 const modalTitle = computed(() => (isEditingAsset.value ? "Editar ativo" : "Novo ativo"));
 const submitButtonLabel = computed(() => "Salvar");
@@ -652,18 +648,6 @@ onBeforeUnmount(() => {
 			</div>
 		</section>
 
-		<section class="summary-grid">
-			<article class="summary-card">
-				<span class="summary-label">Ativos cadastrados</span>
-				<strong>{{ summary.count }}</strong>
-			</article>
-
-			<article class="summary-card">
-				<span class="summary-label">Capital inicial somado</span>
-				<strong>{{ formatCurrency(summary.totalInitialValue) }}</strong>
-			</article>
-		</section>
-
 		<p v-if="errorMessage" class="feedback-error">{{ errorMessage }}</p>
 
 		<section v-if="assets.length > 0" class="asset-list">
@@ -916,7 +900,6 @@ onBeforeUnmount(() => {
 }
 
 .hero-card,
-.summary-card,
 .asset-card,
 .empty-card,
 .modal-card {
@@ -960,7 +943,6 @@ onBeforeUnmount(() => {
 }
 
 .period-badge span,
-.summary-label,
 .eyebrow {
 	font-size: 0.8rem;
 	font-weight: 700;
@@ -976,25 +958,6 @@ onBeforeUnmount(() => {
 .period-badge.muted {
 	border-color: var(--glass-border);
 	background: var(--glass-surface-strong);
-}
-
-.summary-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 16px;
-}
-
-.summary-card {
-	display: grid;
-	gap: 10px;
-	padding: 18px;
-}
-
-.summary-card strong {
-	font-size: clamp(1.6rem, 3.4vw, 2.5rem);
-	line-height: 1;
-	letter-spacing: -0.05em;
-	color: var(--text-h);
 }
 
 .feedback-error {
@@ -1613,14 +1576,12 @@ onBeforeUnmount(() => {
 	}
 
 	.hero-card,
-	.summary-card,
 	.asset-card,
 	.empty-card {
 		padding: 16px;
 		border-radius: 20px;
 	}
 
-	.summary-grid,
 	.modal-grid {
 		grid-template-columns: 1fr;
 	}
