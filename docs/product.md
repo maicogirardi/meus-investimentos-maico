@@ -103,8 +103,11 @@ Campos criados hoje no estado mensal inicial:
 * permite criar e excluir período
 * já mostra um card-resumo fixo da carteira no topo
 * já lista os ativos em cards operacionais com visual alinhado ao app de finanças
-* ainda não grava leituras diárias, aportes, saques e saques extras
-* ainda não calcula saldo total real da carteira nem rendimento
+* já possui modais de atualização, aporte, saque e saque extra por ativo
+* já grava leituras diárias em `dailyReadings`
+* já grava aportes, saques normais e saques extras em `transactions`
+* já recalcula o estado mensal local do ativo após cada ação da Home
+* ainda não recalcula o saldo total consolidado da carteira no card superior
 
 `Resumo` hoje:
 
@@ -172,7 +175,7 @@ Coleções realmente usadas pelo código atual:
 * `users/{uid}/assets/{assetId}`
 * `users/{uid}/assetMonthlyStates/{assetId}__{periodId}`
 
-Coleções que o código já considera em alguns fluxos, mas ainda não popula:
+Coleções que o código já considera e agora também pode popular:
 
 * `users/{uid}/dailyReadings`
 * `users/{uid}/transactions`
@@ -206,6 +209,7 @@ Arquivos principais hoje:
 * `src/services/firebase.js`: bootstrap do Firebase via `VITE_FIREBASE_*`
 * `src/services/periods.js`: IDs, listener e criação de períodos
 * `src/services/assets.js`: listeners de ativos e estados mensais, criação de ativo com estado mensal e exclusão em cascata
+* `src/services/homeActions.js`: grava leituras e transações originadas na Home e atualiza `assetMonthlyStates`
 * `public/sw.js`: cache básico e fluxo de atualização do PWA
 * `.github/workflows/deploy-pages.yml`: deploy automático do GitHub Pages
 
@@ -234,12 +238,13 @@ Firebase atual:
 Estas são as principais divergências entre a documentação antiga e o código atual:
 
 1. A documentação antiga descrevia `Home`, `Resumo`, leituras diárias, transações e cálculos como se estivessem implementados. Isso ainda não está pronto.
-2. O app real hoje usa apenas `preferences`, `periods`, `assets` e `assetMonthlyStates`. As coleções `institutions`, `accounts`, `holdings`, `snapshots`, `dailyReadings` e `transactions` ainda não fazem parte do fluxo completo.
+2. O app real hoje usa principalmente `preferences`, `periods`, `assets` e `assetMonthlyStates`, mas a Home já também pode gravar em `dailyReadings` e `transactions`.
 3. Depois do login, o app abre `Home`. Alguns documentos antigos diziam que a primeira tela autenticada era `Configurações`.
 4. A exclusão de período hoje remove apenas o documento do período. Ela ainda não bloqueia a exclusão do único período existente, não faz cascata e não protege a consistência histórica.
-5. O total da carteira mostrado na `Home` ainda é estático em `0`, então o dashboard patrimonial ainda não consome `assetMonthlyStates`.
-6. A regra de virada de mês com herança do estado final do mês anterior ainda não existe no backend nem no frontend.
-7. O período padrão inicial está fixo em abril de 2026, o que é útil para bootstrap, mas não é uma regra de produto definitiva.
+5. O total da carteira mostrado na `Home` ainda não está amarrado ao estado mensal recalculado, então o dashboard patrimonial superior ainda não reflete o Firestore em tempo real.
+6. A gravação da Home atualiza o estado mensal do período selecionado e, se ele não existir, cria um snapshot inicial com base no último estado conhecido do ativo.
+7. A regra de virada de mês com herança automática do estado final do mês anterior ainda não existe como rotina de backend dedicada.
+8. O período padrão inicial está fixo em abril de 2026, o que é útil para bootstrap, mas não é uma regra de produto definitiva.
 
 ## 8. Regra de manutenção da documentação
 

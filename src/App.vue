@@ -13,6 +13,7 @@ import {
 	subscribeAssets,
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
+import { saveHomeAssetAction } from "./services/homeActions";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -52,6 +53,7 @@ const isDeletePeriodModalOpen = ref(false);
 const periodModalYear = ref(today.getFullYear());
 const periodModalMonth = ref(today.getMonth() + 1);
 const assetErrorMessage = ref("");
+const homeActionErrorMessage = ref("");
 const deletePeriodTarget = ref(null);
 const deleteAssetTarget = ref(null);
 const shouldShowPeriodValidation = ref(false);
@@ -446,6 +448,7 @@ function clearUserState() {
 	deleteAssetTarget.value = null;
 	shouldShowPeriodValidation.value = false;
 	assetErrorMessage.value = "";
+	homeActionErrorMessage.value = "";
 	applyTheme();
 }
 
@@ -665,6 +668,50 @@ async function handleCreateAsset(assetInput) {
 	}
 }
 
+async function handleHomeAssetAction(actionInput) {
+	if (!currentUser.value || !selectedPeriodId.value) {
+		return;
+	}
+
+	const asset = assets.value.find((entry) => entry.id === actionInput?.assetId) || null;
+	if (!asset) {
+		homeActionErrorMessage.value = "Não foi possível localizar o ativo selecionado.";
+		return;
+	}
+
+	const assetStates = assetMonthlyStates.value
+		.filter((monthlyState) => monthlyState.assetId === asset.id)
+		.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
+	const currentMonthlyState = assetStates.find((monthlyState) => monthlyState.periodId === selectedPeriodId.value) || null;
+	const referenceMonthlyState = currentMonthlyState
+		|| [...assetStates]
+			.reverse()
+			.find((monthlyState) => monthlyState.periodId < selectedPeriodId.value)
+		|| null;
+
+	homeActionErrorMessage.value = "";
+	status.value = "loading";
+
+	try {
+		await saveHomeAssetAction(
+			currentUser.value.uid,
+			{
+				...actionInput,
+				periodId: selectedPeriodId.value,
+			},
+			{
+				asset,
+				currentMonthlyState,
+				referenceMonthlyState,
+			},
+		);
+	} catch {
+		homeActionErrorMessage.value = "Não foi possível salvar esta ação agora.";
+	} finally {
+		status.value = "idle";
+	}
+}
+
 async function handleUpdateAsset(assetInput) {
 	if (!currentUser.value || !assetInput?.id) {
 		return;
@@ -841,11 +888,13 @@ onBeforeUnmount(() => {
 				:period-label="periodLabel"
 				:has-selected-period="Boolean(periodLabel)"
 				:is-submitting="isSubmitting"
+				:error-message="homeActionErrorMessage"
 				:assets="assets"
 				@update:year="selectedYear = $event"
 				@update:month="selectedMonth = $event"
 				@add-month="openPeriodModal"
 				@delete-month="openDeletePeriodModal"
+				@submit-action="handleHomeAssetAction"
 			/>
 
 			<ResumoView

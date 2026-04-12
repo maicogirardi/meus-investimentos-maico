@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import AppSelect from "../components/ui/AppSelect.vue";
 
 const props = defineProps({
@@ -31,27 +31,148 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+	errorMessage: {
+		type: String,
+		default: "",
+	},
 	assets: {
 		type: Array,
 		default: () => [],
 	},
 });
 
-defineEmits(["update:year", "update:month", "add-month", "delete-month"]);
+const emit = defineEmits(["update:year", "update:month", "add-month", "delete-month", "submit-action"]);
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+	style: "currency",
+	currency: "BRL",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+
+const actionConfigMap = Object.freeze({
+	update: {
+		title: "Atualizar ativo",
+		description: "Informe os saldos atuais para recalcular este card no período selecionado.",
+		confirmLabel: "Salvar",
+		noteLabel: "",
+		notePlaceholder: "",
+		amountLabel: "",
+		amountPlaceholder: "",
+	},
+	contribution: {
+		title: "Registrar aporte",
+		description: "Registre o valor aportado neste ativo.",
+		confirmLabel: "Salvar",
+		noteLabel: "Motivo do aporte",
+		notePlaceholder: "Ex.: aporte mensal",
+		amountLabel: "Valor do aporte",
+		amountPlaceholder: "R$ 0,00",
+	},
+	withdrawal: {
+		title: "Registrar saque",
+		description: "Registre um saque normal deste ativo.",
+		confirmLabel: "Salvar",
+		noteLabel: "Motivo do saque",
+		notePlaceholder: "Ex.: resgate parcial",
+		amountLabel: "Valor do saque",
+		amountPlaceholder: "R$ 0,00",
+	},
+	extraWithdrawal: {
+		title: "Registrar saque extra",
+		description: "",
+		confirmLabel: "Salvar",
+		noteLabel: "Motivo do saque",
+		notePlaceholder: "Ex.: uso pessoal, ajuste de capital",
+		amountLabel: "Valor",
+		amountPlaceholder: "R$ 0,00",
+	},
+});
 
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
 const totalInitialValue = computed(() =>
 	activeAssets.value.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
 );
 const isWalletCardCompact = ref(false);
+const isActionModalOpen = ref(false);
+const shouldShowActionValidation = ref(false);
+const pendingSubmitActionType = ref("");
+const activeCalculatorField = ref("");
+const calculatorExpression = ref("");
+const calculatorError = ref("");
+const calculatorExpressionInputRef = ref(null);
+const actionModalState = reactive({
+	type: "",
+	assetId: "",
+	assetName: "",
+});
+const actionForm = reactive({
+	date: "",
+	note: "",
+	amount: 0,
+	liquidBalance: 0,
+	grossBalance: 0,
+});
+const amountInput = ref(formatCurrency(0));
+const liquidBalanceInput = ref(formatCurrency(0));
+const grossBalanceInput = ref(formatCurrency(0));
+
+const currentActionConfig = computed(() => actionConfigMap[actionModalState.type] || null);
+const isUpdateAction = computed(() => actionModalState.type === "update");
+const shouldShowNoteField = computed(() => Boolean(currentActionConfig.value?.noteLabel));
+const shouldShowAmountField = computed(() => Boolean(currentActionConfig.value?.amountLabel));
+const isDateMissing = computed(() => shouldShowActionValidation.value && !actionForm.date);
+const isNoteMissing = computed(() => shouldShowActionValidation.value && shouldShowNoteField.value && !actionForm.note.trim());
+const isAmountMissing = computed(() => shouldShowActionValidation.value && shouldShowAmountField.value && actionForm.amount <= 0);
+const isLiquidBalanceMissing = computed(() => shouldShowActionValidation.value && isUpdateAction.value && actionForm.liquidBalance <= 0);
+const isGrossBalanceMissing = computed(() => shouldShowActionValidation.value && isUpdateAction.value && actionForm.grossBalance <= 0);
+const shouldReserveAmountErrorSpace = computed(() => shouldShowAmountField.value);
+const shouldReserveDateAmountErrorSpace = computed(() => isDateMissing.value || isAmountMissing.value);
+const calculatorPreviewText = computed(() => {
+	if (!calculatorExpression.value.trim()) {
+		return "Resultado: R$ 0,00";
+	}
+
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			return "Resultado: valor negativo";
+		}
+
+		return `Resultado: ${formatCurrency(result)}`;
+	} catch {
+		return "Resultado: calculando...";
+	}
+});
+
+watch(
+	() => props.isSubmitting,
+	(isSubmitting, wasSubmitting) => {
+		if (!wasSubmitting || isSubmitting || !pendingSubmitActionType.value) {
+			return;
+		}
+
+		if (props.errorMessage) {
+			pendingSubmitActionType.value = "";
+			return;
+		}
+
+		finalizeActionModalClose();
+	},
+);
+
+watch(
+	() => props.errorMessage,
+	(value) => {
+		if (value) {
+			pendingSubmitActionType.value = "";
+		}
+	},
+);
 
 function formatCurrency(value) {
-	return new Intl.NumberFormat("pt-BR", {
-		style: "currency",
-		currency: "BRL",
-		minimumFractionDigits: 2,
-		maximumFractionDigits: 2,
-	}).format(Number(value || 0));
+	return currencyFormatter.format(Number(value || 0));
 }
 
 function formatDate(value) {
@@ -67,6 +188,486 @@ function formatDate(value) {
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+function getTodayDateInputValue() {
+	const now = new Date();
+	const timezoneOffset = now.getTimezoneOffset() * 60_000;
+	return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
+function normalizeCurrencyText(value) {
+	const raw = String(value ?? "").replace("R$ ", "");
+	const sanitized = raw.replace(/[^\d,]/g, "");
+	const firstCommaIndex = sanitized.indexOf(",");
+
+	if (firstCommaIndex < 0) {
+		return sanitized.replace(/^0+(?=\d)/, "");
+	}
+
+	const integerPart = sanitized.slice(0, firstCommaIndex).replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "");
+	const decimalPart = sanitized.slice(firstCommaIndex + 1).replace(/[^\d]/g, "").slice(0, 2);
+
+	return `${integerPart || "0"},${decimalPart}`;
+}
+
+function parseCurrencyInput(value) {
+	const normalized = normalizeCurrencyText(value);
+	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
+	const integerValue = Number(integerPart || "0");
+	const fractionValue = Number(decimalPart.padEnd(2, "0") || "0");
+	return integerValue + fractionValue / 100;
+}
+
+function normalizeCalculatorExpression(value) {
+	return String(value ?? "")
+		.replace(/\s+/g, "")
+		.replace(/,/g, ".");
+}
+
+function tokenizeCalculatorExpression(expression) {
+	const tokens = [];
+	let index = 0;
+
+	while (index < expression.length) {
+		const character = expression[index];
+
+		if ("+-*/()".includes(character)) {
+			tokens.push(character);
+			index += 1;
+			continue;
+		}
+
+		if (/\d|\./.test(character)) {
+			let numberToken = character;
+			index += 1;
+
+			while (index < expression.length && /[\d.]/.test(expression[index])) {
+				numberToken += expression[index];
+				index += 1;
+			}
+
+			if (!/^\d+(\.\d+)?$|^\.\d+$/.test(numberToken)) {
+				throw new Error("Use apenas números e uma casa decimal por valor.");
+			}
+
+			tokens.push(numberToken);
+			continue;
+		}
+
+		throw new Error("Use apenas números, parênteses e + - * /.");
+	}
+
+	return tokens;
+}
+
+function evaluateCalculatorExpression(expression) {
+	const normalized = normalizeCalculatorExpression(expression);
+
+	if (!normalized) {
+		throw new Error("Digite uma fórmula para calcular.");
+	}
+
+	const tokens = tokenizeCalculatorExpression(normalized);
+	let currentIndex = 0;
+
+	function parseExpression() {
+		let value = parseTerm();
+
+		while (tokens[currentIndex] === "+" || tokens[currentIndex] === "-") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseTerm();
+			value = operator === "+" ? value + nextValue : value - nextValue;
+		}
+
+		return value;
+	}
+
+	function parseTerm() {
+		let value = parseFactor();
+
+		while (tokens[currentIndex] === "*" || tokens[currentIndex] === "/") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseFactor();
+
+			if (operator === "/") {
+				if (nextValue === 0) {
+					throw new Error("Não é possível dividir por zero.");
+				}
+
+				value /= nextValue;
+				continue;
+			}
+
+			value *= nextValue;
+		}
+
+		return value;
+	}
+
+	function parseFactor() {
+		const token = tokens[currentIndex];
+
+		if (token === "+") {
+			currentIndex += 1;
+			return parseFactor();
+		}
+
+		if (token === "-") {
+			currentIndex += 1;
+			return -parseFactor();
+		}
+
+		if (token === "(") {
+			currentIndex += 1;
+			const value = parseExpression();
+
+			if (tokens[currentIndex] !== ")") {
+				throw new Error("Feche os parênteses da fórmula.");
+			}
+
+			currentIndex += 1;
+			return value;
+		}
+
+		if (token == null) {
+			throw new Error("Fórmula incompleta.");
+		}
+
+		const numericValue = Number(token);
+		if (!Number.isFinite(numericValue)) {
+			throw new Error("Fórmula inválida.");
+		}
+
+		currentIndex += 1;
+		return numericValue;
+	}
+
+	const result = parseExpression();
+
+	if (currentIndex !== tokens.length) {
+		throw new Error("Fórmula inválida.");
+	}
+
+	if (!Number.isFinite(result)) {
+		throw new Error("Não foi possível calcular esse valor.");
+	}
+
+	return result;
+}
+
+function setCurrencyField(fieldKey, nextValue) {
+	const normalizedValue = Number.isFinite(nextValue) ? Number(nextValue.toFixed(2)) : 0;
+	actionForm[fieldKey] = normalizedValue;
+
+	if (fieldKey === "amount") {
+		amountInput.value = formatCurrency(normalizedValue);
+		return;
+	}
+
+	if (fieldKey === "liquidBalance") {
+		liquidBalanceInput.value = formatCurrency(normalizedValue);
+		return;
+	}
+
+	grossBalanceInput.value = formatCurrency(normalizedValue);
+}
+
+function formatCalculatorInitialValue(value) {
+	const numericValue = Number(value ?? 0);
+	if (!Number.isFinite(numericValue)) {
+		return "";
+	}
+
+	return numericValue.toFixed(2).replace(".", ",");
+}
+
+function closeCalculator() {
+	activeCalculatorField.value = "";
+	calculatorExpression.value = "";
+	calculatorError.value = "";
+}
+
+function handleCurrencyInput(event, fieldKey) {
+	if (fieldKey === "amount") {
+		handleAmountInput(event);
+		return;
+	}
+
+	const parsedValue = parseCurrencyInput(event.target.value);
+	setCurrencyField(fieldKey, parsedValue);
+	event.target.value = normalizeCurrencyText(event.target.value);
+}
+
+function handleCurrencyFocus(event, fieldKey) {
+	if (fieldKey === "amount") {
+		handleAmountFocus(event);
+		return;
+	}
+
+	const currentValue = Number(actionForm[fieldKey] || 0);
+	event.target.value = currentValue > 0 ? normalizeCurrencyText(event.target.value) : "";
+}
+
+function handleCurrencyBlur(fieldKey) {
+	if (fieldKey === "amount") {
+		handleAmountBlur();
+		return;
+	}
+
+	setCurrencyField(fieldKey, actionForm[fieldKey]);
+}
+
+function handleCurrencyKeydown(event) {
+	if (
+		event.ctrlKey ||
+		event.metaKey ||
+		event.altKey ||
+		[
+			"Backspace",
+			"Delete",
+			"ArrowLeft",
+			"ArrowRight",
+			"ArrowUp",
+			"ArrowDown",
+			"Tab",
+			"Home",
+			"End",
+		].includes(event.key)
+	) {
+		return;
+	}
+
+	if (/^\d$/.test(event.key) || event.key === ",") {
+		return;
+	}
+
+	event.preventDefault();
+}
+
+function syncAmountInput(event) {
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
+	const rawValue = target?.value ?? "";
+	const normalizedInput = normalizeCurrencyText(rawValue);
+	const parsedValue = parseCurrencyInput(normalizedInput);
+	const displayValue = normalizedInput ? `R$ ${normalizedInput}` : "R$ ";
+
+	actionForm.amount = parsedValue;
+	amountInput.value = displayValue;
+
+	if (target && target.value !== displayValue) {
+		target.value = displayValue;
+	}
+}
+
+function handleAmountInput(event) {
+	if (activeCalculatorField.value === "amount") {
+		calculatorExpression.value = "";
+		calculatorError.value = "";
+	}
+
+	syncAmountInput(event);
+}
+
+function handleAmountFocus(event) {
+	const target = event?.target;
+
+	if (actionForm.amount === 0) {
+		amountInput.value = "R$ ";
+
+		if (target instanceof HTMLInputElement) {
+			target.value = "R$ ";
+			requestAnimationFrame(() => {
+				target.setSelectionRange(target.value.length, target.value.length);
+			});
+		}
+	}
+}
+
+function handleAmountBlur() {
+	setCurrencyField("amount", actionForm.amount);
+}
+
+function toggleCalculator() {
+	if (activeCalculatorField.value === "amount") {
+		closeCalculator();
+		return;
+	}
+
+	activeCalculatorField.value = "amount";
+	calculatorExpression.value = formatCalculatorInitialValue(actionForm.amount);
+	calculatorError.value = "";
+
+	void nextTick(() => {
+		const input = calculatorExpressionInputRef.value;
+		input?.focus?.();
+
+		if (input instanceof HTMLInputElement) {
+			if (input.value === "0,00") {
+				input.select();
+				return;
+			}
+
+			const caretPosition = input.value.length;
+			input.setSelectionRange(caretPosition, caretPosition);
+		}
+	});
+}
+
+function applyCalculatorResult() {
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			calculatorError.value = "O resultado precisa ser zero ou maior.";
+			return;
+		}
+
+		setCurrencyField("amount", result);
+		closeCalculator();
+	} catch (error) {
+		calculatorError.value = error instanceof Error ? error.message : "Não foi possível calcular.";
+	}
+}
+
+function handleCalculatorExpressionKeydown(event) {
+	if (event.key === "Enter") {
+		event.preventDefault();
+		event.stopPropagation();
+		applyCalculatorResult();
+		return;
+	}
+
+	if (event.key !== "Escape") {
+		return;
+	}
+
+	event.preventDefault();
+	event.stopPropagation();
+	closeCalculator();
+}
+
+function resetActionForm() {
+	shouldShowActionValidation.value = false;
+	actionForm.date = getTodayDateInputValue();
+	actionForm.note = "";
+	setCurrencyField("amount", 0);
+	setCurrencyField("liquidBalance", 0);
+	setCurrencyField("grossBalance", 0);
+	closeCalculator();
+}
+
+function openActionModal(type, asset) {
+	if (!asset?.id || props.isSubmitting) {
+		return;
+	}
+
+	actionModalState.type = type;
+	actionModalState.assetId = asset.id;
+	actionModalState.assetName = asset.name || "Ativo";
+	pendingSubmitActionType.value = "";
+	resetActionForm();
+	isActionModalOpen.value = true;
+	void nextTick(() => {
+		shouldShowActionValidation.value = true;
+	});
+}
+
+function finalizeActionModalClose() {
+	isActionModalOpen.value = false;
+	shouldShowActionValidation.value = false;
+	pendingSubmitActionType.value = "";
+	actionModalState.type = "";
+	actionModalState.assetId = "";
+	actionModalState.assetName = "";
+	resetActionForm();
+}
+
+function closeActionModal() {
+	if (props.isSubmitting) {
+		return;
+	}
+
+	finalizeActionModalClose();
+}
+
+function hasActionFormErrors() {
+	if (!actionForm.date) {
+		return true;
+	}
+
+	if (shouldShowNoteField.value && !actionForm.note.trim()) {
+		return true;
+	}
+
+	if (shouldShowAmountField.value && actionForm.amount <= 0) {
+		return true;
+	}
+
+	if (isUpdateAction.value && (actionForm.liquidBalance <= 0 || actionForm.grossBalance <= 0)) {
+		return true;
+	}
+
+	return false;
+}
+
+function submitAction() {
+	shouldShowActionValidation.value = true;
+
+	if (hasActionFormErrors() || !actionModalState.assetId || !actionModalState.type || props.isSubmitting) {
+		return;
+	}
+
+	pendingSubmitActionType.value = actionModalState.type;
+	emit("submit-action", {
+		type: actionModalState.type,
+		assetId: actionModalState.assetId,
+		date: actionForm.date,
+		note: actionForm.note.trim(),
+		amount: actionForm.amount,
+		liquidBalance: actionForm.liquidBalance,
+		grossBalance: actionForm.grossBalance,
+	});
+}
+
+function isKeyboardShortcutTargetBlocked() {
+	const activeElement = document.activeElement;
+
+	if (!(activeElement instanceof HTMLElement)) {
+		return false;
+	}
+
+	const tagName = activeElement.tagName;
+
+	return (
+		activeElement.isContentEditable ||
+		tagName === "INPUT" ||
+		tagName === "TEXTAREA" ||
+		tagName === "SELECT" ||
+		tagName === "BUTTON" ||
+		tagName === "A"
+	);
+}
+
+function handleActionModalKeydown(event) {
+	if (!isActionModalOpen.value || props.isSubmitting) {
+		return;
+	}
+
+	if (event.key === "Escape") {
+		event.preventDefault();
+		closeActionModal();
+		return;
+	}
+
+	if (event.key !== "Enter" || event.shiftKey || isKeyboardShortcutTargetBlocked()) {
+		return;
+	}
+
+	event.preventDefault();
+	submitAction();
+}
+
 function handleWindowScroll() {
 	isWalletCardCompact.value = window.scrollY > 120;
 }
@@ -74,10 +675,12 @@ function handleWindowScroll() {
 onMounted(() => {
 	handleWindowScroll();
 	window.addEventListener("scroll", handleWindowScroll, { passive: true });
+	window.addEventListener("keydown", handleActionModalKeydown);
 });
 
 onBeforeUnmount(() => {
 	window.removeEventListener("scroll", handleWindowScroll);
+	window.removeEventListener("keydown", handleActionModalKeydown);
 });
 </script>
 
@@ -216,7 +819,8 @@ onBeforeUnmount(() => {
 							class="action-button action-button-primary"
 							aria-label="Atualizar"
 							title="Atualizar"
-							disabled
+							:disabled="isSubmitting"
+							@click="openActionModal('update', asset)"
 						>
 							<span class="action-button-icon" aria-hidden="true">
 								<svg viewBox="0 0 24 24" fill="none" class="action-button-icon-svg action-button-icon-svg-bag">
@@ -230,7 +834,8 @@ onBeforeUnmount(() => {
 							class="action-button action-button-secondary"
 							aria-label="Aporte"
 							title="Aporte"
-							disabled
+							:disabled="isSubmitting"
+							@click="openActionModal('contribution', asset)"
 						>
 							<span class="action-button-icon" aria-hidden="true">
 								<svg viewBox="0 0 24 24" fill="none">
@@ -271,7 +876,8 @@ onBeforeUnmount(() => {
 							class="action-button action-button-secondary"
 							aria-label="Saque"
 							title="Saque"
-							disabled
+							:disabled="isSubmitting"
+							@click="openActionModal('withdrawal', asset)"
 						>
 							<span class="action-button-icon" aria-hidden="true">
 								<svg viewBox="0 0 24 24" fill="none">
@@ -312,7 +918,8 @@ onBeforeUnmount(() => {
 							class="action-button action-button-danger"
 							aria-label="Saque extra"
 							title="Saque extra"
-							disabled
+							:disabled="isSubmitting"
+							@click="openActionModal('extraWithdrawal', asset)"
 						>
 							<span class="action-button-icon" aria-hidden="true">
 								<svg viewBox="0 0 24 24" fill="none">
@@ -354,6 +961,167 @@ onBeforeUnmount(() => {
 			<h3>Nenhum mês criado.</h3>
 			<p>Use o botão de adicionar para escolher o primeiro mês da carteira.</p>
 		</section>
+		<div v-if="isActionModalOpen" class="modal-backdrop" @click="closeActionModal">
+				<div class="modal-card home-action-modal" @click.stop>
+					<header class="modal-header">
+						<h2>{{ currentActionConfig?.title }}</h2>
+						<p v-if="currentActionConfig?.description">{{ currentActionConfig.description }}</p>
+					</header>
+
+				<div class="modal-summary-grid">
+					<div class="summary-field">
+						<span>Ativo</span>
+						<strong>{{ actionModalState.assetName }}</strong>
+					</div>
+
+					<div class="summary-field">
+						<span>Período</span>
+						<strong>{{ periodLabel || "--" }}</strong>
+					</div>
+				</div>
+
+				<div class="modal-grid">
+					<div class="field-group" :class="{ 'field-group-full': isUpdateAction }">
+						<label class="field-label" for="home-action-date">Data</label>
+						<input
+							id="home-action-date"
+							v-model="actionForm.date"
+							:class="['text-input', { 'required-empty': isDateMissing }]"
+							type="date"
+						/>
+						<div
+							v-if="isDateMissing"
+							class="error-text error-text-reserved"
+						>
+							{{ isDateMissing ? "Informe a data." : " " }}
+						</div>
+					</div>
+
+					<div v-if="isUpdateAction" class="field-group">
+						<label class="field-label" for="home-liquid-balance">Saldo líquido atual</label>
+						<input
+							id="home-liquid-balance"
+							:value="liquidBalanceInput"
+							:class="['text-input', { 'required-empty': isLiquidBalanceMissing }]"
+							type="text"
+							inputmode="decimal"
+							placeholder="R$ 0,00"
+							@keydown="handleCurrencyKeydown"
+							@focus="handleCurrencyFocus($event, 'liquidBalance')"
+							@input="handleCurrencyInput($event, 'liquidBalance')"
+							@blur="handleCurrencyBlur('liquidBalance')"
+						/>
+						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um saldo líquido maior que zero.</div>
+					</div>
+
+					<div v-if="isUpdateAction" class="field-group">
+						<label class="field-label" for="home-gross-balance">Saldo bruto atual</label>
+						<input
+							id="home-gross-balance"
+							:value="grossBalanceInput"
+							:class="['text-input', { 'required-empty': isGrossBalanceMissing }]"
+							type="text"
+							inputmode="decimal"
+							placeholder="R$ 0,00"
+							@keydown="handleCurrencyKeydown"
+							@focus="handleCurrencyFocus($event, 'grossBalance')"
+							@input="handleCurrencyInput($event, 'grossBalance')"
+							@blur="handleCurrencyBlur('grossBalance')"
+						/>
+						<div v-if="isGrossBalanceMissing" class="error-text">Informe um saldo bruto maior que zero.</div>
+					</div>
+
+					<div v-if="shouldShowNoteField" class="field-group field-group-full">
+						<label class="field-label" for="home-action-note">{{ currentActionConfig?.noteLabel }}</label>
+						<input
+							id="home-action-note"
+							v-model.trim="actionForm.note"
+							:class="['text-input', { 'required-empty': isNoteMissing }]"
+							type="text"
+							maxlength="120"
+							:placeholder="currentActionConfig?.notePlaceholder"
+						/>
+						<div v-if="isNoteMissing" class="error-text">
+							{{ actionModalState.type === "contribution" ? "Informe o motivo do aporte." : "Informe o motivo do saque." }}
+						</div>
+					</div>
+
+					<div v-if="shouldShowAmountField" class="field-group" :class="{ 'field-group-full': isUpdateAction }">
+						<label class="field-label" for="home-action-amount">{{ currentActionConfig?.amountLabel }}</label>
+						<div class="currency-input-group">
+							<div class="currency-input-shell">
+								<input
+									id="home-action-amount"
+									:value="amountInput"
+									:class="['text-input', { 'required-empty': isAmountMissing }]"
+									type="text"
+									inputmode="decimal"
+									:placeholder="currentActionConfig?.amountPlaceholder"
+									@keydown="handleCurrencyKeydown"
+									@focus="handleCurrencyFocus($event, 'amount')"
+									@input="handleCurrencyInput($event, 'amount')"
+									@blur="handleCurrencyBlur('amount')"
+								/>
+								<button
+									type="button"
+									class="calculator-toggle"
+									:class="{ 'is-open': activeCalculatorField === 'amount' }"
+									aria-label="Abrir calculadora"
+									@click="toggleCalculator"
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M7 3.75h10A2.25 2.25 0 0 1 19.25 6v12A2.25 2.25 0 0 1 17 20.25H7A2.25 2.25 0 0 1 4.75 18V6A2.25 2.25 0 0 1 7 3.75Z" />
+										<path d="M8 7.5h8M8.75 11.25h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5" />
+									</svg>
+								</button>
+
+								<div v-if="activeCalculatorField === 'amount'" class="calculator-popover">
+									<label class="field-label" for="home-calculator-input">Fórmula</label>
+									<div class="calculator-preview" aria-live="polite">{{ calculatorPreviewText }}</div>
+									<input
+										id="home-calculator-input"
+										ref="calculatorExpressionInputRef"
+										v-model="calculatorExpression"
+										class="text-input"
+										type="text"
+										inputmode="decimal"
+										placeholder="Ex.: 450*3,5"
+										@keydown="handleCalculatorExpressionKeydown"
+									/>
+									<div v-if="calculatorError" class="error-text">{{ calculatorError }}</div>
+									<div class="calculator-popover-actions">
+										<button type="button" class="primary-button calculator-apply-button" @click="applyCalculatorResult">
+											Aplicar
+										</button>
+										<button type="button" class="danger-button" @click="closeCalculator">
+											Cancelar
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div
+							v-if="isAmountMissing || (isUpdateAction ? shouldReserveAmountErrorSpace : shouldReserveDateAmountErrorSpace)"
+							class="error-text error-text-reserved"
+							:class="{ 'is-hidden': !isAmountMissing }"
+						>
+							{{ isAmountMissing ? "Informe um valor maior que zero." : " " }}
+						</div>
+					</div>
+				</div>
+
+				<p v-if="errorMessage" class="error-text modal-error">{{ errorMessage }}</p>
+
+				<div class="modal-actions">
+					<button class="primary-button" type="button" :disabled="isSubmitting" @click="submitAction">
+						{{ currentActionConfig?.confirmLabel || "Salvar" }}
+					</button>
+					<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeActionModal">
+						Cancelar
+					</button>
+				</div>
+			</div>
+		</div>
 	</section>
 </template>
 
@@ -369,7 +1137,8 @@ onBeforeUnmount(() => {
 .asset-card,
 .entry-value-card,
 .metric-card,
-.empty-card {
+.empty-card,
+.modal-card {
 	border: 1px solid var(--glass-border);
 	border-radius: 22px;
 	background: var(--glass-surface);
@@ -421,6 +1190,7 @@ onBeforeUnmount(() => {
 .filter-row button {
 	width: 36px;
 	height: 36px;
+	min-height: 0;
 	min-width: 36px;
 	display: inline-flex;
 	align-items: center;
@@ -475,9 +1245,9 @@ onBeforeUnmount(() => {
 }
 
 .year-filter {
-	flex: 0 0 90px;
-	min-width: 80px;
-	max-width: 100px;
+	flex: 0 0 112px;
+	min-width: 112px;
+	max-width: 124px;
 	height: 36px;
 }
 
@@ -794,8 +1564,30 @@ onBeforeUnmount(() => {
 	color: var(--text-soft);
 	font-size: 1.02rem;
 	font-weight: 700;
+	cursor: pointer;
+	opacity: 0.96;
+	transition:
+		transform 0.18s ease,
+		opacity 0.18s ease,
+		border-color 0.18s ease,
+		background 0.18s ease,
+		color 0.18s ease;
+}
+
+.action-button:hover:not(:disabled) {
+	transform: translateY(-1px);
+	opacity: 1;
+}
+
+.action-button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
+.action-button:disabled {
 	cursor: not-allowed;
-	opacity: 0.88;
+	opacity: 0.58;
+	transform: none;
 }
 
 .action-button-icon {
@@ -882,6 +1674,287 @@ onBeforeUnmount(() => {
 	letter-spacing: 0.18em;
 	text-transform: uppercase;
 	color: var(--text-soft);
+}
+
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: rgba(5, 10, 20, 0.62);
+	backdrop-filter: blur(8px);
+}
+
+.home-action-modal {
+	width: min(100%, 580px);
+	display: grid;
+	gap: 18px;
+	padding: 24px;
+	border-radius: 24px;
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--glass-surface-strong) 94%, transparent) 0%, var(--glass-surface) 100%);
+}
+
+.modal-header {
+	display: grid;
+	gap: 6px;
+}
+
+.modal-header h2 {
+	margin: 0;
+	color: var(--text-h);
+}
+
+.modal-header p,
+.field-note {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--text-soft);
+}
+
+.modal-summary-grid,
+.modal-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+}
+
+.summary-field,
+.field-group {
+	display: grid;
+	gap: 8px;
+}
+
+.summary-field {
+	padding: 14px 16px;
+	border: 1px solid var(--glass-border);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--glass-surface-strong) 82%, transparent);
+}
+
+.summary-field span,
+.field-label {
+	font-size: 0.82rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-soft);
+}
+
+.summary-field strong {
+	color: var(--text-h);
+}
+
+.field-group-full {
+	grid-column: 1 / -1;
+}
+
+.text-input {
+	width: 100%;
+	min-height: 48px;
+	padding: 12px 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 16px;
+	background: var(--input-surface);
+	color: var(--text);
+	font: inherit;
+	outline: none;
+	box-sizing: border-box;
+}
+
+.text-input::placeholder {
+	color: color-mix(in srgb, var(--text-soft) 72%, transparent);
+}
+
+.text-input:focus-visible {
+	border-color: var(--input-focus-border);
+	box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
+.required-empty {
+	background: var(--validation-error-bg);
+	border: 1px solid var(--validation-error-border) !important;
+	box-shadow: 0 0 0 2px var(--validation-error-ring);
+}
+
+.required-empty::placeholder {
+	color: var(--validation-error-text);
+	font-style: italic;
+}
+
+.field-group:has(.required-empty) .field-label {
+	color: var(--validation-error-text);
+}
+
+.required-empty:focus-visible {
+	border-color: var(--validation-error-border);
+	box-shadow:
+		0 0 0 3px var(--validation-error-ring),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.error-text-reserved {
+	min-height: 18px;
+}
+
+.error-text-reserved.is-hidden {
+	visibility: hidden;
+}
+
+.currency-input-group {
+	display: block;
+}
+
+.currency-input-shell {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.currency-input-shell input {
+	padding-right: 54px;
+}
+
+.calculator-toggle {
+	position: absolute;
+	top: 50%;
+	right: 12px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	transform: translateY(-50%);
+	color: color-mix(in srgb, var(--input-text) 72%, transparent);
+}
+
+.calculator-toggle:hover,
+.calculator-toggle.is-open {
+	transform: translateY(-50%);
+	color: var(--text-h);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.calculator-toggle svg {
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.calculator-popover {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	bottom: auto;
+	z-index: 60;
+	display: grid;
+	gap: 8px;
+	width: min(360px, calc(100vw - 56px));
+	padding: 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 18px;
+	background:
+		linear-gradient(180deg, var(--glass-highlight) 0%, transparent 100%),
+		var(--glass-surface-strong);
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(22px);
+	transform: translate(-50%, -50%);
+}
+
+.calculator-preview {
+	padding-top: 2px;
+	padding-bottom: 2px;
+	border-top: 1px solid color-mix(in srgb, var(--glass-border-strong) 88%, transparent);
+	color: color-mix(in srgb, var(--text-soft) 78%, #000);
+	font-size: 13px;
+	font-style: italic;
+}
+
+.calculator-popover-actions {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 10px;
+}
+
+.calculator-apply-button {
+	min-width: 96px;
+}
+
+.error-text {
+	color: var(--validation-error-text);
+	font-size: 13px;
+}
+
+.modal-error {
+	margin: 0;
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: flex-start;
+	gap: 10px;
+}
+
+.primary-button,
+.danger-button {
+	min-height: 48px;
+	padding: 0 18px;
+	border: 1px solid transparent;
+	border-radius: 16px;
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+	transition:
+		transform 0.18s ease,
+		opacity 0.18s ease,
+		border-color 0.18s ease,
+		background 0.18s ease,
+		color 0.18s ease;
+}
+
+.primary-button {
+	border-color: color-mix(in srgb, var(--color-primary) 24%, var(--glass-border));
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 18%, transparent) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--glass-surface-strong) 90%, transparent);
+	color: var(--text-h);
+}
+
+.danger-button {
+	border-color: var(--danger-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-bg);
+	color: var(--danger-text);
+}
+
+.primary-button:hover:not(:disabled),
+.danger-button:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+
+.primary-button:focus-visible,
+.danger-button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 4px var(--input-focus-ring);
+}
+
+.primary-button:disabled,
+.danger-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.58;
+	transform: none;
 }
 
 @media (max-width: 1023px) {
@@ -1036,6 +2109,25 @@ onBeforeUnmount(() => {
 
 	.action-button-label {
 		display: none;
+	}
+
+	.modal-backdrop {
+		padding: 16px;
+	}
+
+	.home-action-modal,
+	.modal-summary-grid,
+	.modal-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.home-action-modal {
+		padding: 18px;
+	}
+
+	.modal-actions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
 

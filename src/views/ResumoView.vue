@@ -59,11 +59,13 @@ const selectedAnnualAssets = computed(() =>
 	activeAssets.value.filter((asset) => selectedAnnualAssetIds.value.includes(asset.id)),
 );
 const selectedPeriodLabel = computed(() => {
-	if (props.periodLabel) {
-		return props.periodLabel;
+	const formattedPeriodLabel = formatPeriodLabel(props.selectedPeriodId);
+
+	if (formattedPeriodLabel !== "--") {
+		return formattedPeriodLabel;
 	}
 
-	return formatPeriodLabel(props.selectedPeriodId);
+	return props.periodLabel || "--";
 });
 const selectedPeriodStateMap = computed(() => {
 	const monthlyStatesByAssetId = new Map();
@@ -115,13 +117,7 @@ const annualRows = computed(() => {
 				liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
 				grossBalance: latestYearState ? Number(latestYearState.currentGrossBalance || 0) : 0,
 				contribution: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthContributions || 0), 0),
-				withdrawals: yearlyStates.reduce(
-					(total, monthlyState) =>
-						total +
-						Number(monthlyState.monthNormalWithdrawals || 0) +
-						Number(monthlyState.monthExtraWithdrawals || 0),
-					0,
-				),
+				extraWithdrawals: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthExtraWithdrawals || 0), 0),
 			};
 		})
 		.sort((leftRow, rightRow) => leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" }));
@@ -130,7 +126,7 @@ const annualTotals = computed(() => ({
 	liquidBalance: annualRows.value.reduce((total, row) => total + Number(row.liquidBalance || 0), 0),
 	grossBalance: annualRows.value.reduce((total, row) => total + Number(row.grossBalance || 0), 0),
 	contribution: annualRows.value.reduce((total, row) => total + Number(row.contribution || 0), 0),
-	withdrawals: annualRows.value.reduce((total, row) => total + Number(row.withdrawals || 0), 0),
+	extraWithdrawals: annualRows.value.reduce((total, row) => total + Number(row.extraWithdrawals || 0), 0),
 }));
 const periodTotals = computed(() => ({
 	netIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.netIncome || 0), 0),
@@ -194,11 +190,6 @@ function formatPeriodLabel(periodId) {
 			</div>
 
 			<div class="summary-hero-stats">
-				<article class="hero-stat">
-					<span>Ativos</span>
-					<strong>{{ activeAssets.length }}</strong>
-				</article>
-
 				<article class="hero-stat hero-stat-total">
 					<span>Saldo Total</span>
 					<strong>{{ formatCurrency(totalInitialValue) }}</strong>
@@ -231,7 +222,7 @@ function formatPeriodLabel(periodId) {
 				<h3>Saldo anual</h3>
 			</header>
 
-			<div class="table-shell">
+			<div class="table-shell table-shell-annual">
 				<table class="summary-table">
 					<thead>
 						<tr>
@@ -240,7 +231,7 @@ function formatPeriodLabel(periodId) {
 							<th>Saldo l&iacute;quido</th>
 							<th>Saldo total</th>
 							<th>Aporte</th>
-							<th>Saques</th>
+							<th>Saques Extras</th>
 						</tr>
 					</thead>
 
@@ -256,14 +247,14 @@ function formatPeriodLabel(periodId) {
 							<td>{{ formatValue(row.liquidBalance) }}</td>
 							<td>{{ formatValue(row.grossBalance) }}</td>
 							<td>{{ formatValue(row.contribution) }}</td>
-							<td>{{ formatValue(row.withdrawals) }}</td>
+							<td>{{ formatValue(row.extraWithdrawals) }}</td>
 						</tr>
 						<tr class="summary-total-row">
 							<td colspan="2">Total</td>
 							<td>{{ formatValue(annualTotals.liquidBalance) }}</td>
 							<td>{{ formatValue(annualTotals.grossBalance) }}</td>
 							<td>{{ formatValue(annualTotals.contribution) }}</td>
-							<td>{{ formatValue(annualTotals.withdrawals) }}</td>
+							<td>{{ formatValue(annualTotals.extraWithdrawals) }}</td>
 						</tr>
 					</tbody>
 
@@ -449,9 +440,16 @@ function formatPeriodLabel(periodId) {
 	color: var(--text-h);
 }
 
+.summary-hero h2 {
+	font-size: clamp(2rem, 4vw, 3rem);
+	line-height: 1;
+	letter-spacing: -0.04em;
+}
+
 .summary-hero-stats {
 	display: grid;
-	grid-template-columns: minmax(0, 200px) minmax(0, 1.45fr);
+	grid-template-columns: minmax(320px, 420px);
+	justify-content: end;
 	gap: 12px;
 }
 
@@ -462,7 +460,7 @@ function formatPeriodLabel(periodId) {
 }
 
 .hero-stat-total {
-	min-width: min(100%, 300px);
+	min-width: min(100%, 420px);
 	padding: 20px 22px;
 }
 
@@ -613,6 +611,11 @@ function formatPeriodLabel(periodId) {
 }
 
 @media (max-width: 640px) {
+	.summary-view {
+		padding-inline: 10px;
+		box-sizing: border-box;
+	}
+
 	.summary-hero,
 	.hero-stat,
 	.table-header {
@@ -624,9 +627,60 @@ function formatPeriodLabel(periodId) {
 		width: 100%;
 	}
 
+	.table-shell {
+		overflow-x: visible;
+	}
+
+	.table-shell-annual {
+		overflow-x: auto;
+	}
+
+	.summary-grid .summary-table {
+		table-layout: fixed;
+	}
+
+	.summary-grid .summary-table thead th:nth-child(1),
+	.summary-grid .summary-table tbody td:nth-child(1) {
+		width: 52%;
+	}
+
+	.summary-grid .summary-table thead th:nth-child(2),
+	.summary-grid .summary-table tbody td:nth-child(2) {
+		width: 20%;
+	}
+
+	.summary-grid .summary-table thead th:nth-child(3),
+	.summary-grid .summary-table tbody td:nth-child(3) {
+		width: 28%;
+	}
+
 	.summary-table thead th,
 	.summary-table tbody td {
-		padding: 10px 14px;
+		padding: 10px 12px;
+	}
+
+	.summary-grid .summary-table thead th,
+	.summary-grid .summary-table tbody td {
+		padding: 10px 8px;
+		font-size: 0.92rem;
+	}
+
+	.summary-grid .summary-table thead th {
+		font-size: 0.78rem;
+	}
+
+	.summary-grid .asset-cell {
+		display: flex;
+		min-width: 0;
+		gap: 8px;
+	}
+
+	.summary-grid .asset-cell span:last-child {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.86rem;
 	}
 }
 </style>
