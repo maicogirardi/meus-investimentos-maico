@@ -14,7 +14,7 @@ import {
 	subscribeTransactions,
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
-import { saveHomeAssetAction } from "./services/homeActions";
+import { deleteHomeTransaction, saveHomeAssetAction, updateHomeTransaction } from "./services/homeActions";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -62,6 +62,7 @@ const periodModalYear = ref(today.getFullYear());
 const periodModalMonth = ref(today.getMonth() + 1);
 const assetErrorMessage = ref("");
 const homeActionErrorMessage = ref("");
+const summaryActionErrorMessage = ref("");
 const deletePeriodTarget = ref(null);
 const deleteAssetTarget = ref(null);
 const shouldShowPeriodValidation = ref(false);
@@ -547,6 +548,7 @@ function clearUserState() {
 	shouldShowPeriodValidation.value = false;
 	assetErrorMessage.value = "";
 	homeActionErrorMessage.value = "";
+	summaryActionErrorMessage.value = "";
 	applyTheme();
 }
 
@@ -827,6 +829,40 @@ async function handleUpdateAsset(assetInput) {
 	}
 }
 
+async function handleUpdateTransaction(transactionInput) {
+	if (!currentUser.value || !transactionInput?.id) {
+		return;
+	}
+
+	summaryActionErrorMessage.value = "";
+	status.value = "loading";
+
+	try {
+		await updateHomeTransaction(currentUser.value.uid, transactionInput);
+	} catch {
+		summaryActionErrorMessage.value = "Não foi possível atualizar esta movimentação agora.";
+	} finally {
+		status.value = "idle";
+	}
+}
+
+async function handleDeleteTransaction(transactionId) {
+	if (!currentUser.value || !transactionId) {
+		return;
+	}
+
+	summaryActionErrorMessage.value = "";
+	status.value = "loading";
+
+	try {
+		await deleteHomeTransaction(currentUser.value.uid, transactionId);
+	} catch {
+		summaryActionErrorMessage.value = "Não foi possível excluir esta movimentação agora.";
+	} finally {
+		status.value = "idle";
+	}
+}
+
 async function confirmDeleteAsset() {
 	if (!currentUser.value || !deleteAssetTarget.value?.id) {
 		return;
@@ -1015,8 +1051,12 @@ onBeforeUnmount(() => {
 				:monthly-states="assetMonthlyStates"
 				:transactions="transactions"
 				:period-label="periodLabel"
+				:is-submitting="isSubmitting"
+				:error-message="summaryActionErrorMessage"
 				:selected-year="selectedYear"
 				:selected-period-id="selectedPeriodId"
+				@update-transaction="handleUpdateTransaction"
+				@delete-transaction="handleDeleteTransaction"
 			/>
 
 			<AtivosView

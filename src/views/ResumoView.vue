@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
+import AppSelect from "../components/ui/AppSelect.vue";
 
 const MOVEMENTS_PER_PAGE = 5;
 
@@ -16,6 +17,14 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	isSubmitting: {
+		type: Boolean,
+		default: false,
+	},
+	errorMessage: {
+		type: String,
+		default: "",
+	},
 	periodLabel: {
 		type: String,
 		default: "",
@@ -29,6 +38,43 @@ const props = defineProps({
 		default: "",
 	},
 });
+
+const emit = defineEmits(["update-transaction", "delete-transaction"]);
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+	style: "currency",
+	currency: "BRL",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+const isEditTransactionModalOpen = ref(false);
+const deleteTransactionTarget = ref(null);
+const pendingTransactionAction = ref("");
+const shouldShowTransactionValidation = ref(false);
+const transactionTypeOptions = Object.freeze([
+	{ value: "contribution", label: "Aporte" },
+	{ value: "withdrawal", label: "Saque" },
+	{ value: "extraWithdrawal", label: "Saque Extra" },
+]);
+const transactionForm = reactive({
+	id: "",
+	type: "contribution",
+	date: "",
+	note: "",
+	amount: 0,
+});
+const amountInput = ref(formatCurrency(0));
+const isTransactionTypeInvalid = computed(() =>
+	shouldShowTransactionValidation.value && !transactionTypeOptions.some((option) => option.value === transactionForm.type),
+);
+const isTransactionDateInvalid = computed(() =>
+	shouldShowTransactionValidation.value && !transactionForm.date,
+);
+const isTransactionNoteInvalid = computed(() =>
+	shouldShowTransactionValidation.value && !transactionForm.note.trim(),
+);
+const isTransactionAmountInvalid = computed(() =>
+	shouldShowTransactionValidation.value && Number(transactionForm.amount) <= 0,
+);
 
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
 const totalInitialValue = computed(() =>
@@ -198,6 +244,32 @@ watch(
 );
 
 watch(
+	() => props.isSubmitting,
+	(isSubmitting, wasSubmitting) => {
+		if (!wasSubmitting || isSubmitting || !pendingTransactionAction.value) {
+			return;
+		}
+
+		if (props.errorMessage) {
+			pendingTransactionAction.value = "";
+			return;
+		}
+
+		closeEditTransactionModal(true);
+		closeDeleteTransactionModal(true);
+	},
+);
+
+watch(
+	() => props.errorMessage,
+	(value) => {
+		if (value) {
+			pendingTransactionAction.value = "";
+		}
+	},
+);
+
+watch(
 	movementPageCount,
 	(nextPageCount) => {
 		if (movementPage.value > nextPageCount) {
@@ -256,6 +328,186 @@ function goToMovementPage(nextPage) {
 	}
 
 	movementPage.value = nextPage;
+}
+
+function openEditTransactionModal(row) {
+	if (!row?.id || props.isSubmitting) {
+		return;
+	}
+
+	transactionForm.id = row.id;
+	transactionForm.type = row.type || "contribution";
+	transactionForm.date = row.transactionDate || "";
+	transactionForm.note = row.note === "--" ? "" : row.note;
+	transactionForm.amount = Number(row.amount || 0);
+	amountInput.value = formatCurrency(transactionForm.amount);
+	pendingTransactionAction.value = "";
+	shouldShowTransactionValidation.value = false;
+	isEditTransactionModalOpen.value = true;
+	void nextTick(() => {
+		shouldShowTransactionValidation.value = true;
+	});
+}
+
+function closeEditTransactionModal(forceClose = false) {
+	if (!forceClose && props.isSubmitting) {
+		return;
+	}
+
+	isEditTransactionModalOpen.value = false;
+	shouldShowTransactionValidation.value = false;
+	transactionForm.id = "";
+	transactionForm.type = "contribution";
+	transactionForm.date = "";
+	transactionForm.note = "";
+	transactionForm.amount = 0;
+	amountInput.value = formatCurrency(0);
+}
+
+function openDeleteTransactionModal(row) {
+	if (!row?.id || props.isSubmitting) {
+		return;
+	}
+
+	deleteTransactionTarget.value = {
+		id: row.id,
+		assetName: row.assetName,
+		typeLabel: row.typeLabel,
+		periodLabel: row.periodLabel,
+	};
+	pendingTransactionAction.value = "";
+}
+
+function closeDeleteTransactionModal(forceClose = false) {
+	if (!forceClose && props.isSubmitting) {
+		return;
+	}
+
+	deleteTransactionTarget.value = null;
+}
+
+function isTransactionFormInvalid() {
+	return (
+		!transactionForm.id
+		|| !transactionForm.date
+		|| !transactionForm.note.trim()
+		|| Number(transactionForm.amount) <= 0
+		|| !transactionTypeOptions.some((option) => option.value === transactionForm.type)
+	);
+}
+
+function submitTransactionEdit() {
+	shouldShowTransactionValidation.value = true;
+
+	if (isTransactionFormInvalid() || props.isSubmitting) {
+		return;
+	}
+
+	pendingTransactionAction.value = "edit";
+	emit("update-transaction", {
+		id: transactionForm.id,
+		type: transactionForm.type,
+		date: transactionForm.date,
+		note: transactionForm.note.trim(),
+		amount: Number(transactionForm.amount),
+	});
+}
+
+function confirmTransactionDelete() {
+	if (!deleteTransactionTarget.value?.id || props.isSubmitting) {
+		return;
+	}
+
+	pendingTransactionAction.value = "delete";
+	emit("delete-transaction", deleteTransactionTarget.value.id);
+}
+
+function normalizeCurrencyText(value) {
+	const raw = String(value ?? "").replace("R$ ", "");
+	const sanitized = raw.replace(/[^\d,]/g, "");
+	const firstCommaIndex = sanitized.indexOf(",");
+
+	if (firstCommaIndex < 0) {
+		return sanitized.replace(/^0+(?=\d)/, "");
+	}
+
+	const integerPart = sanitized.slice(0, firstCommaIndex).replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "");
+	const decimalPart = sanitized.slice(firstCommaIndex + 1).replace(/[^\d]/g, "").slice(0, 2);
+
+	return `${integerPart || "0"},${decimalPart}`;
+}
+
+function parseCurrencyInput(value) {
+	const normalized = normalizeCurrencyText(value);
+	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
+	const integerValue = Number(integerPart || "0");
+	const fractionValue = Number(decimalPart.padEnd(2, "0") || "0");
+	return integerValue + fractionValue / 100;
+}
+
+function handleCurrencyKeydown(event) {
+	if (
+		event.ctrlKey ||
+		event.metaKey ||
+		event.altKey ||
+		[
+			"Backspace",
+			"Delete",
+			"ArrowLeft",
+			"ArrowRight",
+			"ArrowUp",
+			"ArrowDown",
+			"Tab",
+			"Home",
+			"End",
+		].includes(event.key)
+	) {
+		return;
+	}
+
+	if (/^\d$/.test(event.key) || event.key === ",") {
+		return;
+	}
+
+	event.preventDefault();
+}
+
+function syncAmountInput(event) {
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
+	const rawValue = target?.value ?? "";
+	const normalizedInput = normalizeCurrencyText(rawValue);
+	const parsedValue = parseCurrencyInput(normalizedInput);
+	const displayValue = normalizedInput ? `R$ ${normalizedInput}` : "R$ ";
+
+	transactionForm.amount = parsedValue;
+	amountInput.value = displayValue;
+
+	if (target && target.value !== displayValue) {
+		target.value = displayValue;
+	}
+}
+
+function handleAmountInput(event) {
+	syncAmountInput(event);
+}
+
+function handleAmountFocus(event) {
+	const target = event?.target;
+
+	if (transactionForm.amount === 0) {
+		amountInput.value = "R$ ";
+
+		if (target instanceof HTMLInputElement) {
+			target.value = "R$ ";
+			requestAnimationFrame(() => {
+				target.setSelectionRange(target.value.length, target.value.length);
+			});
+		}
+	}
+}
+
+function handleAmountBlur() {
+	amountInput.value = formatCurrency(transactionForm.amount);
 }
 
 function compareMovementRows(leftRow, rightRow) {
@@ -608,6 +860,7 @@ function formatPeriodLabel(periodId) {
 									</span>
 								</button>
 							</th>
+							<th class="movement-actions-column">Ações</th>
 						</tr>
 					</thead>
 
@@ -623,12 +876,48 @@ function formatPeriodLabel(periodId) {
 							<td>{{ row.typeLabel }}</td>
 							<td>{{ row.note }}</td>
 							<td>{{ formatCurrency(row.amount) }}</td>
+							<td>
+								<div class="movement-actions">
+									<button
+										type="button"
+										class="icon-button asset-action-button asset-action-button-edit"
+										aria-label="Editar movimentação"
+										:disabled="isSubmitting"
+										@click="openEditTransactionModal(row)"
+									>
+										<span class="button-icon button-icon-edit" aria-hidden="true">
+											<svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+												<path d="m4 20 4.2-1 9.5-9.5a2.12 2.12 0 1 0-3-3L5.2 16 4 20Z" />
+												<path d="m13.5 7.5 3 3" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+											</svg>
+										</span>
+									</button>
+
+									<button
+										type="button"
+										class="danger-button icon-button asset-action-button asset-action-button-delete"
+										aria-label="Excluir movimentação"
+										:disabled="isSubmitting"
+										@click="openDeleteTransactionModal(row)"
+									>
+										<span class="button-icon button-icon-delete" aria-hidden="true">
+											<svg class="delete-icon-svg" width="26" height="26" viewBox="124 86 10 16" aria-hidden="true">
+												<path
+													d="M 126.81 89.11 L 126.81 87.61 C 126.81 87.058 127.258 86.61 127.81 86.61 L 130.81 86.61 C 131.362 86.61 131.81 87.058 131.81 87.61 L 131.81 89.11 L 124.81 89.11 L 124.918 89.901 L 133.702 89.901 L 133.81 89.11 Z M 132.31 99.11 C 132.283 99.643 131.843 100.061 131.31 100.06 L 127.31 100.06 C 126.777 100.061 126.337 99.643 126.31 99.11 L 125.036 90.767 L 133.584 90.767 Z M 130.627 98.807 L 131.493 98.807 L 131.493 91.978 L 130.627 91.978 Z M 128.902 98.807 L 129.768 98.807 L 129.768 91.978 L 128.902 91.978 Z M 127.204 98.807 L 128.07 98.807 L 128.07 91.978 L 127.204 91.978 Z"
+													fill="currentColor"
+													style="stroke-width: 1;"
+												/>
+											</svg>
+										</span>
+									</button>
+								</div>
+							</td>
 						</tr>
 					</tbody>
 
 					<tbody v-else>
 						<tr>
-							<td colspan="5" class="empty-row">
+							<td colspan="6" class="empty-row">
 								{{ selectedAnnualAssets.length > 0 ? "Nenhuma movimentação encontrada para os ativos selecionados." : "Cadastre um ativo para visualizar as movimentações." }}
 							</td>
 						</tr>
@@ -664,6 +953,107 @@ function formatPeriodLabel(periodId) {
 				</button>
 			</footer>
 		</section>
+		<div v-if="isEditTransactionModalOpen" class="modal-backdrop" @click="closeEditTransactionModal()">
+			<div class="modal-card" @click.stop>
+				<header class="modal-header">
+					<h3>Editar movimentação</h3>
+				</header>
+
+				<div class="modal-grid">
+					<div class="field-group">
+						<span class="field-label">Tipo</span>
+						<AppSelect
+							v-model="transactionForm.type"
+							:options="transactionTypeOptions"
+							:invalid="isTransactionTypeInvalid"
+							placeholder="Escolha o tipo"
+						/>
+						<div v-if="isTransactionTypeInvalid" class="error-text">Escolha um tipo.</div>
+					</div>
+
+					<div class="field-group">
+						<span class="field-label">Data</span>
+						<input
+							v-model="transactionForm.date"
+							:class="['text-input', { 'required-empty': isTransactionDateInvalid }]"
+							type="date"
+						/>
+						<div v-if="isTransactionDateInvalid" class="error-text">Informe a data.</div>
+					</div>
+
+					<div class="field-group field-group-full">
+						<span class="field-label">Motivo</span>
+						<input
+							v-model.trim="transactionForm.note"
+							:class="['text-input', { 'required-empty': isTransactionNoteInvalid }]"
+							type="text"
+							maxlength="120"
+							placeholder="Descreva a movimentação"
+						/>
+						<div v-if="isTransactionNoteInvalid" class="error-text">Informe o motivo da movimentação.</div>
+					</div>
+
+					<div class="field-group field-group-full">
+						<span class="field-label">Valor</span>
+						<div class="currency-input-group">
+							<div class="currency-input-shell">
+								<input
+									:value="amountInput"
+									:class="['text-input', { 'required-empty': isTransactionAmountInvalid }]"
+									type="text"
+									inputmode="decimal"
+									placeholder="R$ 0,00"
+									@keydown="handleCurrencyKeydown"
+									@focus="handleAmountFocus"
+									@input="handleAmountInput"
+									@blur="handleAmountBlur"
+								/>
+							</div>
+						</div>
+						<div v-if="isTransactionAmountInvalid" class="error-text">Informe um valor maior que zero.</div>
+					</div>
+				</div>
+
+				<p v-if="errorMessage" class="error-text modal-error">{{ errorMessage }}</p>
+
+				<div class="modal-actions">
+					<button class="primary-button" type="button" :disabled="isSubmitting" @click="submitTransactionEdit">
+						Salvar
+					</button>
+					<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeEditTransactionModal()">
+						Cancelar
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<div v-if="deleteTransactionTarget" class="modal-backdrop" @click="closeDeleteTransactionModal()">
+			<div class="modal-card" @click.stop>
+				<header class="modal-header">
+					<h3>Excluir movimentação</h3>
+					<p>Confirme a exclusão da transação selecionada.</p>
+				</header>
+
+				<div class="modal-fields">
+					<div class="confirm-summary-card">
+						<span class="field-label">Movimentação</span>
+						<strong>{{ deleteTransactionTarget.assetName }}</strong>
+						<span>{{ deleteTransactionTarget.typeLabel }} • {{ deleteTransactionTarget.periodLabel }}</span>
+					</div>
+
+					<p v-if="errorMessage" class="error-text modal-error">{{ errorMessage }}</p>
+				</div>
+
+				<div class="modal-actions">
+					<button class="danger-button" type="button" :disabled="isSubmitting" @click="closeDeleteTransactionModal()">
+						Cancelar
+					</button>
+					<button class="danger-button" type="button" :disabled="isSubmitting" @click="confirmTransactionDelete">
+						Excluir
+					</button>
+				</div>
+			</div>
+		</div>
 	</section>
 </template>
 
@@ -1143,6 +1533,351 @@ function formatPeriodLabel(periodId) {
 
 	.pagination-bar {
 		padding: 10px 12px 14px;
+	}
+}
+
+.movement-actions-column {
+	text-align: right;
+}
+
+.movement-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.asset-action-button {
+	width: 38px;
+	height: 38px;
+	padding: 0;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 14px;
+}
+
+.primary-button,
+.danger-button,
+.icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	border: 1px solid var(--theme-button-border);
+	border-radius: 18px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-bg);
+	color: var(--text-soft);
+	cursor: pointer;
+	outline: none;
+	appearance: none;
+	-webkit-appearance: none;
+	-webkit-tap-highlight-color: transparent;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	transition:
+		transform 0.18s ease,
+		background 0.18s ease,
+		border-color 0.18s ease,
+		color 0.18s ease,
+		box-shadow 0.18s ease,
+		opacity 0.18s ease;
+}
+
+.primary-button,
+.danger-button {
+	padding: 11px 16px;
+	font: inherit;
+	font-weight: 600;
+}
+
+.icon-button {
+	width: 42px;
+	height: 42px;
+	padding: 0;
+	border-radius: 50%;
+	flex: 0 0 42px;
+}
+
+.primary-button:hover,
+.icon-button:hover {
+	transform: translateY(-1px);
+	border-color: var(--theme-button-hover-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--theme-button-hover-bg);
+	color: var(--text-h);
+}
+
+.primary-button:focus-visible,
+.icon-button:focus-visible,
+.danger-button:focus-visible,
+.text-input:focus-visible {
+	border-color: color-mix(in srgb, var(--color-primary) 54%, var(--theme-button-hover-border));
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent),
+		inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.primary-button:disabled,
+.danger-button:disabled,
+.icon-button:disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.primary-button {
+	border-color: color-mix(in srgb, var(--color-primary) 46%, var(--glass-border-strong));
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 18%, var(--glass-surface-strong));
+	color: color-mix(in srgb, var(--color-primary) 62%, white);
+}
+
+.danger-button,
+.asset-action-button-delete {
+	border-color: var(--danger-border);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-bg);
+	color: var(--danger-text);
+}
+
+.danger-button:hover,
+.asset-action-button-delete:hover {
+	border-color: var(--danger-border-strong);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		var(--danger-hover);
+	color: var(--danger-text);
+}
+
+.asset-action-button-edit {
+	border-color: color-mix(in srgb, var(--color-primary) 46%, var(--glass-border-strong));
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 18%, var(--glass-surface-strong));
+	color: color-mix(in srgb, var(--color-primary) 62%, white);
+}
+
+.asset-action-button-edit:hover {
+	border-color: color-mix(in srgb, var(--color-primary) 62%, var(--glass-border-strong));
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--color-primary) 22%, var(--glass-surface-strong));
+	color: color-mix(in srgb, var(--color-primary) 42%, white);
+}
+
+.button-icon,
+.icon-button svg {
+	width: 20px;
+	height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.button-icon svg,
+.icon-button svg {
+	width: 20px;
+	height: 20px;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.button-icon-edit,
+.button-icon-delete {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 26px;
+	height: 26px;
+}
+
+.delete-icon-svg {
+	display: block;
+	width: 26px;
+	height: 26px;
+	flex: 0 0 26px;
+	margin: 0 auto;
+}
+
+.delete-icon-svg,
+.delete-icon-svg * {
+	fill: currentColor !important;
+	stroke: none !important;
+}
+
+.button-icon svg[fill="white"],
+.button-icon svg [fill="white"] {
+	fill: currentColor;
+}
+
+.button-icon svg [stroke="white"] {
+	stroke: currentColor;
+}
+
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: rgba(6, 10, 18, 0.52);
+	backdrop-filter: blur(12px);
+}
+
+.modal-card {
+	width: min(100%, 460px);
+	gap: 12px;
+	padding: 18px;
+	border: 1px solid var(--glass-border);
+	border-radius: 22px;
+	background: var(--glass-surface);
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(22px);
+}
+
+.modal-header {
+	display: grid;
+	gap: 0;
+}
+
+.modal-fields {
+	display: grid;
+	gap: 14px;
+}
+
+.modal-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px 12px;
+	align-items: start;
+}
+
+.field-group {
+	display: grid;
+	gap: 6px;
+	align-content: start;
+}
+
+.field-group-full {
+	grid-column: 1 / -1;
+}
+
+.field-label {
+	font-size: 0.82rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-soft);
+}
+
+.text-input {
+	width: 100%;
+	min-height: 48px;
+	padding: 12px 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 16px;
+	background: var(--input-surface);
+	color: var(--text);
+	font: inherit;
+	outline: none;
+	box-sizing: border-box;
+}
+
+.text-input::placeholder {
+	color: color-mix(in srgb, var(--text-soft) 72%, transparent);
+}
+
+.required-empty {
+	background: var(--validation-error-bg);
+	border: 1px solid var(--validation-error-border) !important;
+	box-shadow: 0 0 0 2px var(--validation-error-ring);
+}
+
+.required-empty::placeholder {
+	color: var(--validation-error-text);
+	font-style: italic;
+}
+
+.field-group:has(.required-empty) .field-label,
+.field-group:has(.app-select.is-invalid) .field-label {
+	color: var(--validation-error-text);
+}
+
+.required-empty:focus-visible {
+	border-color: var(--validation-error-border);
+	box-shadow:
+		0 0 0 3px var(--validation-error-ring),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: flex-start;
+	gap: 10px;
+	margin-top: 20px;
+}
+
+.confirm-summary-card {
+	display: grid;
+	gap: 6px;
+	padding: 14px 16px;
+	border: 1px solid color-mix(in srgb, var(--danger-border) 82%, var(--glass-border));
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--danger-bg) 72%, var(--glass-surface-strong));
+}
+
+.confirm-summary-card strong {
+	color: var(--text-h);
+}
+
+.error-text {
+	font-size: 13px;
+	color: var(--validation-error-text);
+}
+
+.modal-error {
+	margin: 0;
+}
+
+.currency-input-group {
+	display: block;
+}
+
+.currency-input-shell {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.modal-grid :deep(.app-select__trigger) {
+	min-height: 48px;
+	padding: 12px 52px 12px 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 16px;
+	background: var(--input-surface);
+	color: var(--text);
+	box-sizing: border-box;
+}
+
+.modal-grid :deep(.app-select__label) {
+	color: var(--text);
+}
+
+.modal-grid :deep(.app-select.is-invalid .app-select__trigger) {
+	background: var(--validation-error-bg);
+	border-color: var(--validation-error-border);
+	box-shadow: 0 0 0 2px var(--validation-error-ring);
+}
+
+@media (max-width: 640px) {
+	.modal-grid {
+		grid-template-columns: minmax(0, 1fr);
 	}
 }
 </style>
