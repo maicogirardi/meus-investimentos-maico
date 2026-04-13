@@ -39,6 +39,14 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	monthlyStates: {
+		type: Array,
+		default: () => [],
+	},
+	selectedPeriodId: {
+		type: String,
+		default: "",
+	},
 });
 
 const emit = defineEmits(["update:year", "update:month", "add-month", "delete-month", "submit-action"]);
@@ -90,8 +98,21 @@ const actionConfigMap = Object.freeze({
 });
 
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
-const totalInitialValue = computed(() =>
-	activeAssets.value.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
+const selectedPeriodStateMap = computed(() => {
+	const monthlyStatesByAssetId = new Map();
+
+	props.monthlyStates.forEach((monthlyState) => {
+		if (monthlyState.periodId !== props.selectedPeriodId || !monthlyState.assetId) {
+			return;
+		}
+
+		monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
+	});
+
+	return monthlyStatesByAssetId;
+});
+const totalBalance = computed(() =>
+	activeAssets.value.reduce((total, asset) => total + getAssetCapitalInvested(asset), 0),
 );
 const isWalletCardCompact = ref(false);
 const isActionModalOpen = ref(false);
@@ -186,6 +207,14 @@ function formatDate(value) {
 	}
 
 	return `${String(month).padStart(2, "0")}/${year}`;
+}
+
+function getAssetMonthlyState(assetId) {
+	return selectedPeriodStateMap.value.get(assetId) || null;
+}
+
+function getAssetCapitalInvested(asset) {
+	return Number(getAssetMonthlyState(asset?.id)?.currentCapitalInvested ?? asset?.initialValue ?? 0);
 }
 
 function getTodayDateInputValue() {
@@ -732,7 +761,7 @@ onBeforeUnmount(() => {
 		<section v-if="hasSelectedPeriod" class="wallet-card" :class="{ 'wallet-card-compact': isWalletCardCompact }">
 			<div class="wallet-card-main">
 				<p class="wallet-label">Saldo total</p>
-				<strong class="wallet-total">{{ formatCurrency(totalInitialValue) }}</strong>
+				<strong class="wallet-total">{{ formatCurrency(totalBalance) }}</strong>
 			</div>
 
 			<ul v-if="activeAssets.length > 0" class="wallet-asset-list">
@@ -741,7 +770,7 @@ onBeforeUnmount(() => {
 						<span class="wallet-asset-dot" :style="{ '--asset-color': asset.color || '#4F7CFF' }" />
 						<span class="wallet-asset-name">{{ asset.name }}</span>
 					</div>
-					<strong class="wallet-asset-value">{{ formatCurrency(asset.initialValue) }}</strong>
+					<strong class="wallet-asset-value">{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
 				</li>
 			</ul>
 
@@ -794,7 +823,7 @@ onBeforeUnmount(() => {
 					<div class="home-metrics-grid">
 						<article class="metric-card">
 							<span>Total</span>
-							<strong>{{ formatCurrency(asset.initialValue) }}</strong>
+							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
 						</article>
 
 						<article class="metric-card">

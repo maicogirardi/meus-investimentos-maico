@@ -105,23 +105,26 @@ Campos criados hoje no estado mensal inicial:
 
 * permite selecionar ano e mes
 * permite criar e excluir periodo
-* ja mostra um card-resumo fixo da carteira no topo
+* ja mostra um card-resumo fixo da carteira no topo usando `currentCapitalInvested` do periodo selecionado
 * ja lista os ativos em cards operacionais com visual alinhado ao app de financas
 * ja possui modais de atualizacao, aporte, saque e saque extra por ativo
 * ja grava leituras diarias em `dailyReadings`
 * ja grava aportes, saques normais e saques extras em `transactions`
 * ja recalcula o estado mensal local do ativo apos cada acao da Home
-* ainda nao recalcula o saldo total consolidado da carteira no card superior
+* o saldo total da carteira e o `Total` de cada ativo no topo agora acompanham `currentCapitalInvested` do periodo selecionado
 
 `Resumo` hoje:
 
 * consome `assets` e `assetMonthlyStates` em realtime
 * saldo anual ja pode ser filtrado por ativo com pills no cabecalho
-* rendimento liquido, rendimento bruto e saques ja mostram o nome e a cor de cada ativo
-* movimentacoes ja consomem `transactions` filtradas por ativo
-* tabela de movimentacoes ja possui ordenacao por ativo, periodo, tipo, motivo e valor
+* saldo total superior e coluna `Saldo total` do anual agora seguem `currentCapitalInvested`
+* rendimento liquido e rendimento bruto continuam baseados no estado mensal do periodo selecionado
+* lista de saques agora usa cada transacao `withdrawal` individual do periodo selecionado, com edicao e exclusao
+* movimentacoes agora mostram apenas `Aporte` e `Saque Extra`
+* movimentacoes continuam consumindo `transactions` filtradas por ativo
+* tabela de movimentacoes continua com ordenacao por ativo, periodo, tipo, motivo e valor
 * tabela de movimentacoes ja possui paginacao de 5 itens por pagina
-* coluna `Tipo` ja diferencia `Aporte`, `Saque` e `Saque Extra`
+* a coluna `Tipo` da tabela de movimentacoes agora diferencia `Aporte` e `Saque Extra`
 * continua limitado aos dados que ja existem em `assetMonthlyStates`
 
 `Ativos` hoje:
@@ -146,6 +149,10 @@ Regras principais ainda validas para a fase de implementacao:
 * `capitalInvestido = valorInicial + soma(aportes) - soma(saquesExtras)`
 * `rendimentoLiquidoDia = saldoLiquidoAtual - saldoLiquidoAnterior - aportesDoDia + saquesNormaisDoDia + saquesExtrasDoDia`
 * `rendimentoBrutoDia = saldoBrutoAtual - saldoBrutoAnterior - aportesDoDia + saquesNormaisDoDia + saquesExtrasDoDia`
+* `aporte` deve somar ao capital investido sem contaminar rendimento: ao registrar um aporte, o estado mensal tambem ajusta `currentLiquidBalance` e `currentGrossBalance` no mesmo valor para manter `monthNetIncome` e `monthGrossIncome` inalterados ate uma nova atualizacao manual
+* `saque extra` deve reduzir o capital investido sem contaminar rendimento: ao registrar um saque extra, o estado mensal tambem ajusta `currentLiquidBalance` e `currentGrossBalance` no mesmo valor para manter `monthNetIncome` e `monthGrossIncome` inalterados ate uma nova atualizacao manual
+* `saque` deve reduzir apenas o saldo liquido do estado mensal: ele diminui `currentLiquidBalance`, entra em `monthNormalWithdrawals`, impacta `monthNetIncome` e nao altera `currentCapitalInvested` nem `monthGrossIncome`
+* no `Resumo`, o `Saldo liquido` anual e a soma de `monthNetIncome` do ano; o `Saldo total` anual e o capital investido acumulado do ativo, refletindo `saldo inicial + aportes - saques extras`
 
 Escopo-alvo por tela:
 

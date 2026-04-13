@@ -1038,6 +1038,8 @@ onBeforeUnmount(() => {
 				:is-submitting="isSubmitting"
 				:error-message="homeActionErrorMessage"
 				:assets="assets"
+				:monthly-states="assetMonthlyStates"
+				:selected-period-id="selectedPeriodId"
 				@update:year="selectedYear = $event"
 				@update:month="selectedMonth = $event"
 				@add-month="openPeriodModal"

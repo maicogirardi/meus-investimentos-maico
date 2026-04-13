@@ -98,9 +98,6 @@ const calculatorPreviewText = computed(() => {
 });
 
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
-const totalInitialValue = computed(() =>
-	activeAssets.value.reduce((total, asset) => total + Number(asset.initialValue || 0), 0),
-);
 const selectedAnnualAssetIds = ref([]);
 const movementSortState = ref(getDefaultMovementSort());
 const movementPage = ref(1);
@@ -132,6 +129,28 @@ watch(
 
 const selectedAnnualAssets = computed(() =>
 	activeAssets.value.filter((asset) => selectedAnnualAssetIds.value.includes(asset.id)),
+);
+const latestMonthlyStateMap = computed(() => {
+	const monthlyStatesByAssetId = new Map();
+
+	props.monthlyStates.forEach((monthlyState) => {
+		if (!monthlyState.assetId) {
+			return;
+		}
+
+		const currentMonthlyState = monthlyStatesByAssetId.get(monthlyState.assetId) || null;
+		if (!currentMonthlyState || currentMonthlyState.periodId.localeCompare(monthlyState.periodId, "pt-BR") < 0) {
+			monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
+		}
+	});
+
+	return monthlyStatesByAssetId;
+});
+const summaryTotalBalance = computed(() =>
+	selectedAnnualAssets.value.reduce((total, asset) => {
+		const latestMonthlyState = latestMonthlyStateMap.value.get(asset.id) || null;
+		return total + Number(latestMonthlyState?.currentCapitalInvested ?? asset.initialValue ?? 0);
+	}, 0),
 );
 const selectedPeriodLabel = computed(() => {
 	const formattedPeriodLabel = formatPeriodLabel(props.selectedPeriodId);
@@ -165,49 +184,9 @@ const assetPeriodRows = computed(() =>
 			periodLabel: selectedPeriodLabel.value || "--",
 			netIncome: monthlyState ? monthlyState.monthNetIncome : null,
 			grossIncome: monthlyState ? monthlyState.monthGrossIncome : null,
-			withdrawals:
-				monthlyState
-					? Number(monthlyState.monthNormalWithdrawals || 0) + Number(monthlyState.monthExtraWithdrawals || 0)
-					: null,
 		};
 	}),
 );
-const annualRows = computed(() => {
-	if (!props.selectedYear || selectedAnnualAssets.value.length === 0) {
-		return [];
-	}
-
-	return selectedAnnualAssets.value
-		.map((asset) => {
-			const yearlyStates = props.monthlyStates
-				.filter((monthlyState) => monthlyState.assetId === asset.id && getPeriodYear(monthlyState.periodId) === props.selectedYear)
-				.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
-			const latestYearState = yearlyStates[yearlyStates.length - 1] || null;
-
-			return {
-				id: asset.id,
-				name: asset.name,
-				color: asset.color || "#4F7CFF",
-				label: String(props.selectedYear),
-				liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
-				grossBalance: latestYearState ? Number(latestYearState.currentGrossBalance || 0) : 0,
-				contribution: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthContributions || 0), 0),
-				extraWithdrawals: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthExtraWithdrawals || 0), 0),
-			};
-		})
-		.sort((leftRow, rightRow) => leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" }));
-});
-const annualTotals = computed(() => ({
-	liquidBalance: annualRows.value.reduce((total, row) => total + Number(row.liquidBalance || 0), 0),
-	grossBalance: annualRows.value.reduce((total, row) => total + Number(row.grossBalance || 0), 0),
-	contribution: annualRows.value.reduce((total, row) => total + Number(row.contribution || 0), 0),
-	extraWithdrawals: annualRows.value.reduce((total, row) => total + Number(row.extraWithdrawals || 0), 0),
-}));
-const periodTotals = computed(() => ({
-	netIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.netIncome || 0), 0),
-	grossIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.grossIncome || 0), 0),
-	withdrawals: assetPeriodRows.value.reduce((total, row) => total + Number(row.withdrawals || 0), 0),
-}));
 const assetMap = computed(() => {
 	const entries = activeAssets.value.map((asset) => [
 		asset.id,
@@ -219,10 +198,78 @@ const assetMap = computed(() => {
 
 	return new Map(entries);
 });
+const selectedTransactions = computed(() =>
+	props.transactions.filter((transaction) => selectedAnnualAssetIds.value.includes(transaction.assetId)),
+);
+const annualRows = computed(() => {
+	if (!props.selectedYear || selectedAnnualAssets.value.length === 0) {
+		return [];
+	}
+
+	return selectedAnnualAssets.value
+		.map((asset) => {
+			const yearlyStates = props.monthlyStates
+				.filter((monthlyState) => monthlyState.assetId === asset.id && getPeriodYear(monthlyState.periodId) === props.selectedYear)
+				.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
+			const historicalStates = props.monthlyStates
+				.filter((monthlyState) => monthlyState.assetId === asset.id && getPeriodYear(monthlyState.periodId) <= props.selectedYear)
+				.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
+			const latestHistoricalState = historicalStates[historicalStates.length - 1] || null;
+			const yearlyTransactions = selectedTransactions.value.filter((transaction) =>
+				transaction.assetId === asset.id && getPeriodYear(transaction.periodId) === props.selectedYear,
+			);
+
+			return {
+				id: asset.id,
+				name: asset.name,
+				color: asset.color || "#4F7CFF",
+				label: String(props.selectedYear),
+				liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
+				totalBalance: Number(latestHistoricalState?.currentCapitalInvested ?? asset.initialValue ?? 0),
+				contribution: yearlyTransactions.reduce((total, transaction) =>
+					total + (transaction.type === "contribution" ? Number(transaction.amount || 0) : 0), 0),
+				extraWithdrawals: yearlyTransactions.reduce((total, transaction) =>
+					total + (transaction.type === "extraWithdrawal" ? Number(transaction.amount || 0) : 0), 0),
+			};
+		})
+		.sort((leftRow, rightRow) => leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" }));
+});
+const annualTotals = computed(() => ({
+	liquidBalance: annualRows.value.reduce((total, row) => total + Number(row.liquidBalance || 0), 0),
+	totalBalance: annualRows.value.reduce((total, row) => total + Number(row.totalBalance || 0), 0),
+	contribution: annualRows.value.reduce((total, row) => total + Number(row.contribution || 0), 0),
+	extraWithdrawals: annualRows.value.reduce((total, row) => total + Number(row.extraWithdrawals || 0), 0),
+}));
+const withdrawalRows = computed(() =>
+	selectedTransactions.value
+		.filter((transaction) => transaction.type === "withdrawal" && transaction.periodId === props.selectedPeriodId)
+		.map((transaction) => {
+			const asset = assetMap.value.get(transaction.assetId);
+
+			return {
+				id: transaction.id,
+				assetName: asset?.name || "Ativo removido",
+				assetColor: asset?.color || "#4F7CFF",
+				type: transaction.type,
+				typeLabel: formatMovementType(transaction.type),
+				periodLabel: formatPeriodLabel(transaction.periodId),
+				transactionDate: transaction.transactionDate || "",
+				dateLabel: formatTransactionDate(transaction.transactionDate),
+				note: transaction.note || "--",
+				amount: Number(transaction.amount || 0),
+			};
+		})
+		.sort((leftRow, rightRow) => compareTransactionRows(leftRow, rightRow) * -1),
+);
+const periodTotals = computed(() => ({
+	netIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.netIncome || 0), 0),
+	grossIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.grossIncome || 0), 0),
+	withdrawals: withdrawalRows.value.reduce((total, row) => total + Number(row.amount || 0), 0),
+}));
 const movementRows = computed(() => {
-	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
+	const allowedTypes = ["contribution", "extraWithdrawal"];
 	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
-	const transactionEntries = [...props.transactions];
+	const transactionEntries = [...selectedTransactions.value];
 
 	return transactionEntries
 		.filter((transaction) => allowedTypes.includes(transaction.type) && selectedAnnualAssetIds.value.includes(transaction.assetId))
@@ -754,10 +801,7 @@ function handleCalculatorExpressionKeydown(event) {
 
 function compareMovementRows(leftRow, rightRow) {
 	if (movementSortState.value.key === "date") {
-		const dateCompare = leftRow.transactionDate.localeCompare(rightRow.transactionDate, "pt-BR");
-		if (dateCompare !== 0) {
-			return dateCompare;
-		}
+		return compareTransactionRows(leftRow, rightRow);
 	}
 
 	if (movementSortState.value.key === "period") {
@@ -777,6 +821,15 @@ function compareMovementRows(leftRow, rightRow) {
 	}
 
 	return leftRow.assetName.localeCompare(rightRow.assetName, "pt-BR", { sensitivity: "base" });
+}
+
+function compareTransactionRows(leftRow, rightRow) {
+	const dateCompare = leftRow.transactionDate.localeCompare(rightRow.transactionDate, "pt-BR");
+	if (dateCompare !== 0) {
+		return dateCompare;
+	}
+
+	return leftRow.id.localeCompare(rightRow.id, "pt-BR", { sensitivity: "base" });
 }
 
 function formatCurrency(value) {
@@ -824,6 +877,16 @@ function formatPeriodLabel(periodId) {
 
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
+
+function formatTransactionDate(value) {
+	const normalized = String(value || "").trim();
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+		return "--";
+	}
+
+	const [year, month, day] = normalized.split("-");
+	return `${day}/${month}/${year}`;
+}
 </script>
 
 <template>
@@ -836,7 +899,7 @@ function formatPeriodLabel(periodId) {
 			<div class="summary-hero-stats">
 				<article class="hero-stat hero-stat-total">
 					<span>Saldo Total</span>
-					<strong>{{ formatCurrency(totalInitialValue) }}</strong>
+					<strong>{{ formatCurrency(summaryTotalBalance) }}</strong>
 				</article>
 			</div>
 		</section>
@@ -889,14 +952,14 @@ function formatPeriodLabel(periodId) {
 							</td>
 							<td>{{ row.label }}</td>
 							<td>{{ formatValue(row.liquidBalance) }}</td>
-							<td>{{ formatValue(row.grossBalance) }}</td>
+							<td>{{ formatValue(row.totalBalance) }}</td>
 							<td>{{ formatValue(row.contribution) }}</td>
 							<td>{{ formatValue(row.extraWithdrawals) }}</td>
 						</tr>
 						<tr class="summary-total-row">
 							<td colspan="2">Total</td>
 							<td>{{ formatValue(annualTotals.liquidBalance) }}</td>
-							<td>{{ formatValue(annualTotals.grossBalance) }}</td>
+							<td>{{ formatValue(annualTotals.totalBalance) }}</td>
 							<td>{{ formatValue(annualTotals.contribution) }}</td>
 							<td>{{ formatValue(annualTotals.extraWithdrawals) }}</td>
 						</tr>
@@ -1002,35 +1065,75 @@ function formatPeriodLabel(periodId) {
 				</header>
 
 				<div class="table-shell">
-					<table class="summary-table">
+					<table class="summary-table summary-table-withdrawals">
 						<thead>
 							<tr>
 								<th>Ativo</th>
-								<th>Per&iacute;odo</th>
+								<th>Data</th>
+								<th>Motivo</th>
 								<th>Valor</th>
+								<th class="movement-actions-column">A&ccedil;&otilde;es</th>
 							</tr>
 						</thead>
 
-						<tbody v-if="assetPeriodRows.length > 0">
-							<tr v-for="row in assetPeriodRows" :key="`withdrawal-${row.id}`">
+						<tbody v-if="withdrawalRows.length > 0">
+							<tr v-for="row in withdrawalRows" :key="`withdrawal-${row.id}`">
 								<td>
 									<div class="asset-cell">
-										<span class="asset-dot" :style="{ '--asset-color': row.color }" />
-										<span>{{ row.name }}</span>
+										<span class="asset-dot" :style="{ '--asset-color': row.assetColor }" />
+										<span>{{ row.assetName }}</span>
 									</div>
 								</td>
-								<td>{{ row.periodLabel }}</td>
-								<td>{{ formatValue(row.withdrawals) }}</td>
+								<td>{{ row.dateLabel }}</td>
+								<td>{{ row.note }}</td>
+								<td>{{ formatCurrency(row.amount) }}</td>
+								<td>
+									<div class="movement-actions">
+										<button
+											type="button"
+											class="icon-button asset-action-button asset-action-button-edit"
+											aria-label="Editar movimenta&ccedil;&atilde;o"
+											:disabled="isSubmitting"
+											@click="openEditTransactionModal(row)"
+										>
+											<span class="button-icon button-icon-edit" aria-hidden="true">
+												<svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+													<path d="m4 20 4.2-1 9.5-9.5a2.12 2.12 0 1 0-3-3L5.2 16 4 20Z" />
+													<path d="m13.5 7.5 3 3" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+												</svg>
+											</span>
+										</button>
+
+										<button
+											type="button"
+											class="danger-button icon-button asset-action-button asset-action-button-delete"
+											aria-label="Excluir movimenta&ccedil;&atilde;o"
+											:disabled="isSubmitting"
+											@click="openDeleteTransactionModal(row)"
+										>
+											<span class="button-icon button-icon-delete" aria-hidden="true">
+												<svg class="delete-icon-svg" width="26" height="26" viewBox="124 86 10 16" aria-hidden="true">
+													<path
+														d="M 126.81 89.11 L 126.81 87.61 C 126.81 87.058 127.258 86.61 127.81 86.61 L 130.81 86.61 C 131.362 86.61 131.81 87.058 131.81 87.61 L 131.81 89.11 L 124.81 89.11 L 124.918 89.901 L 133.702 89.901 L 133.81 89.11 Z M 132.31 99.11 C 132.283 99.643 131.843 100.061 131.31 100.06 L 127.31 100.06 C 126.777 100.061 126.337 99.643 126.31 99.11 L 125.036 90.767 L 133.584 90.767 Z M 130.627 98.807 L 131.493 98.807 L 131.493 91.978 L 130.627 91.978 Z M 128.902 98.807 L 129.768 98.807 L 129.768 91.978 L 128.902 91.978 Z M 127.204 98.807 L 128.07 98.807 L 128.07 91.978 L 127.204 91.978 Z"
+														fill="currentColor"
+														style="stroke-width: 1;"
+													/>
+												</svg>
+											</span>
+										</button>
+									</div>
+								</td>
 							</tr>
 							<tr class="summary-total-row">
-								<td colspan="2">Total</td>
+								<td colspan="3">Total</td>
 								<td>{{ formatValue(periodTotals.withdrawals) }}</td>
+								<td></td>
 							</tr>
 						</tbody>
 
 						<tbody v-else>
 							<tr>
-								<td colspan="3" class="empty-row">Nenhum saque registrado.</td>
+								<td colspan="5" class="empty-row">Nenhum saque registrado para o per&iacute;odo selecionado.</td>
 							</tr>
 						</tbody>
 					</table>
@@ -1712,7 +1815,7 @@ function formatPeriodLabel(periodId) {
 		-webkit-overflow-scrolling: touch;
 	}
 
-	.summary-grid .summary-table {
+	.summary-grid .summary-table:not(.summary-table-withdrawals) {
 		table-layout: fixed;
 	}
 
@@ -1761,47 +1864,62 @@ function formatPeriodLabel(periodId) {
 	}
 
 	.summary-table-movements thead th:nth-child(1),
-	.summary-table-movements tbody td:nth-child(1) {
+	.summary-table-movements tbody td:nth-child(1),
+	.summary-table-withdrawals thead th:nth-child(1),
+	.summary-table-withdrawals tbody td:nth-child(1) {
 		width: 24%;
 	}
 
 	.summary-table-movements thead th:nth-child(2),
-	.summary-table-movements tbody td:nth-child(2) {
+	.summary-table-movements tbody td:nth-child(2),
+	.summary-table-withdrawals thead th:nth-child(2),
+	.summary-table-withdrawals tbody td:nth-child(2) {
 		width: 16%;
 	}
 
 	.summary-table-movements thead th:nth-child(3),
-	.summary-table-movements tbody td:nth-child(3) {
+	.summary-table-movements tbody td:nth-child(3),
+	.summary-table-withdrawals thead th:nth-child(3),
+	.summary-table-withdrawals tbody td:nth-child(3) {
 		width: 18%;
 	}
 
 	.summary-table-movements thead th:nth-child(4),
-	.summary-table-movements tbody td:nth-child(4) {
+	.summary-table-movements tbody td:nth-child(4),
+	.summary-table-withdrawals thead th:nth-child(4),
+	.summary-table-withdrawals tbody td:nth-child(4) {
 		width: 26%;
 	}
 
 	.summary-table-movements thead th:nth-child(5),
-	.summary-table-movements tbody td:nth-child(5) {
+	.summary-table-movements tbody td:nth-child(5),
+	.summary-table-withdrawals thead th:nth-child(5),
+	.summary-table-withdrawals tbody td:nth-child(5) {
 		width: 16%;
 	}
 
 	.summary-table-movements thead th,
-	.summary-table-movements tbody td {
+	.summary-table-movements tbody td,
+	.summary-table-withdrawals thead th,
+	.summary-table-withdrawals tbody td {
 		padding: 10px 8px;
 		font-size: 0.92rem;
 	}
 
-	.summary-table-movements thead th {
+	.summary-table-movements thead th,
+	.summary-table-withdrawals thead th {
 		font-size: 0.78rem;
 	}
 
-	.summary-table-movements .asset-cell {
+	.summary-table-movements .asset-cell,
+	.summary-table-withdrawals .asset-cell {
 		display: flex;
 		min-width: 0;
 		gap: 8px;
 	}
 
-	.summary-table-movements .asset-cell span:last-child {
+	.summary-table-movements .asset-cell span:last-child,
+	.summary-table-withdrawals .asset-cell span:last-child {
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;

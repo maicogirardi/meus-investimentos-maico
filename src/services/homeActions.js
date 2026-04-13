@@ -21,6 +21,15 @@ function normalizePeriodId(value) {
 	return /^\d{4}-\d{2}$/.test(String(value || "").trim()) ? String(value).trim() : "";
 }
 
+function normalizeTimestampMillis(value) {
+	if (typeof value?.toMillis === "function") {
+		return value.toMillis();
+	}
+
+	const normalized = Number(value);
+	return Number.isFinite(normalized) ? normalized : null;
+}
+
 function getCurrentDateLabel() {
 	const now = new Date();
 	const year = now.getFullYear();
@@ -98,6 +107,12 @@ function compareEntriesByDate(leftEntry, rightEntry, fieldName = "transactionDat
 		return dateCompare;
 	}
 
+	const leftCreatedAt = normalizeTimestampMillis(leftEntry?.createdAt);
+	const rightCreatedAt = normalizeTimestampMillis(rightEntry?.createdAt);
+	if (leftCreatedAt != null && rightCreatedAt != null && leftCreatedAt !== rightCreatedAt) {
+		return leftCreatedAt - rightCreatedAt;
+	}
+
 	return normalizeText(leftEntry?.id).localeCompare(normalizeText(rightEntry?.id), "pt-BR", { sensitivity: "base" });
 }
 
@@ -113,41 +128,53 @@ function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadin
 		lastReadingDate: "",
 	};
 
-	[...transactions]
-		.sort((leftTransaction, rightTransaction) => compareEntriesByDate(leftTransaction, rightTransaction))
-		.forEach((transaction) => {
-			const amount = normalizeAmount(transaction.amount);
+	const timelineEntries = [
+		...dailyReadings.map((dailyReading) => ({
+			...dailyReading,
+			entryType: actionKinds.update,
+			actionDate: normalizeActionDate(dailyReading.readingDate),
+		})),
+		...transactions.map((transaction) => ({
+			...transaction,
+			entryType: normalizeText(transaction.type),
+			actionDate: normalizeActionDate(transaction.transactionDate),
+		})),
+	].sort((leftEntry, rightEntry) => compareEntriesByDate(leftEntry, rightEntry, "actionDate"));
 
-			if (amount <= 0) {
-				return;
-			}
+	timelineEntries.forEach((entry) => {
+		if (entry.entryType === actionKinds.update) {
+			nextMonthlyState.currentLiquidBalance = normalizeAmount(entry.liquidBalance);
+			nextMonthlyState.currentGrossBalance = normalizeAmount(entry.grossBalance);
+			nextMonthlyState.lastReadingDate = normalizeActionDate(entry.readingDate || entry.actionDate);
+			return;
+		}
 
-			if (transaction.type === actionKinds.contribution) {
-				nextMonthlyState.currentCapitalInvested = normalizeAmount(nextMonthlyState.currentCapitalInvested + amount);
-				nextMonthlyState.monthContributions = normalizeAmount(nextMonthlyState.monthContributions + amount);
-				return;
-			}
+		const amount = normalizeAmount(entry.amount);
+		if (amount <= 0) {
+			return;
+		}
 
-			if (transaction.type === actionKinds.withdrawal) {
-				nextMonthlyState.monthNormalWithdrawals = normalizeAmount(nextMonthlyState.monthNormalWithdrawals + amount);
-				return;
-			}
+		if (entry.entryType === actionKinds.contribution) {
+			nextMonthlyState.currentCapitalInvested = normalizeAmount(nextMonthlyState.currentCapitalInvested + amount);
+			nextMonthlyState.currentLiquidBalance = normalizeAmount(nextMonthlyState.currentLiquidBalance + amount);
+			nextMonthlyState.currentGrossBalance = normalizeAmount(nextMonthlyState.currentGrossBalance + amount);
+			nextMonthlyState.monthContributions = normalizeAmount(nextMonthlyState.monthContributions + amount);
+			return;
+		}
 
-			if (transaction.type === actionKinds.extraWithdrawal) {
-				nextMonthlyState.currentCapitalInvested = normalizeAmount(Math.max(0, nextMonthlyState.currentCapitalInvested - amount));
-				nextMonthlyState.monthExtraWithdrawals = normalizeAmount(nextMonthlyState.monthExtraWithdrawals + amount);
-			}
-		});
+		if (entry.entryType === actionKinds.withdrawal) {
+			nextMonthlyState.currentLiquidBalance = normalizeAmount(Math.max(0, nextMonthlyState.currentLiquidBalance - amount));
+			nextMonthlyState.monthNormalWithdrawals = normalizeAmount(nextMonthlyState.monthNormalWithdrawals + amount);
+			return;
+		}
 
-	const latestReading = [...dailyReadings]
-		.sort((leftReading, rightReading) => compareEntriesByDate(leftReading, rightReading, "readingDate"))
-		.at(-1);
-
-	if (latestReading) {
-		nextMonthlyState.currentLiquidBalance = normalizeAmount(latestReading.liquidBalance);
-		nextMonthlyState.currentGrossBalance = normalizeAmount(latestReading.grossBalance);
-		nextMonthlyState.lastReadingDate = normalizeActionDate(latestReading.readingDate);
-	}
+		if (entry.entryType === actionKinds.extraWithdrawal) {
+			nextMonthlyState.currentCapitalInvested = normalizeAmount(Math.max(0, nextMonthlyState.currentCapitalInvested - amount));
+			nextMonthlyState.currentLiquidBalance = normalizeAmount(Math.max(0, nextMonthlyState.currentLiquidBalance - amount));
+			nextMonthlyState.currentGrossBalance = normalizeAmount(Math.max(0, nextMonthlyState.currentGrossBalance - amount));
+			nextMonthlyState.monthExtraWithdrawals = normalizeAmount(nextMonthlyState.monthExtraWithdrawals + amount);
+		}
+	});
 
 	return {
 		...nextMonthlyState,
@@ -284,6 +311,8 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 			nextMonthlyState = {
 				...nextMonthlyState,
 				currentCapitalInvested: normalizeAmount(nextMonthlyState.currentCapitalInvested + amount),
+				currentLiquidBalance: normalizeAmount(nextMonthlyState.currentLiquidBalance + amount),
+				currentGrossBalance: normalizeAmount(nextMonthlyState.currentGrossBalance + amount),
 				monthContributions: normalizeAmount(nextMonthlyState.monthContributions + amount),
 			};
 		}
@@ -291,6 +320,7 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 		if (type === actionKinds.withdrawal) {
 			nextMonthlyState = {
 				...nextMonthlyState,
+				currentLiquidBalance: normalizeAmount(Math.max(0, nextMonthlyState.currentLiquidBalance - amount)),
 				monthNormalWithdrawals: normalizeAmount(nextMonthlyState.monthNormalWithdrawals + amount),
 			};
 		}
@@ -299,6 +329,8 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 			nextMonthlyState = {
 				...nextMonthlyState,
 				currentCapitalInvested: normalizeAmount(Math.max(0, nextMonthlyState.currentCapitalInvested - amount)),
+				currentLiquidBalance: normalizeAmount(Math.max(0, nextMonthlyState.currentLiquidBalance - amount)),
+				currentGrossBalance: normalizeAmount(Math.max(0, nextMonthlyState.currentGrossBalance - amount)),
 				monthExtraWithdrawals: normalizeAmount(nextMonthlyState.monthExtraWithdrawals + amount),
 			};
 		}
