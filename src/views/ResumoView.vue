@@ -63,6 +63,10 @@ const transactionForm = reactive({
 	amount: 0,
 });
 const amountInput = ref(formatCurrency(0));
+const activeCalculatorField = ref("");
+const calculatorExpression = ref("");
+const calculatorError = ref("");
+const calculatorExpressionInputRef = ref(null);
 const isTransactionTypeInvalid = computed(() =>
 	shouldShowTransactionValidation.value && !transactionTypeOptions.some((option) => option.value === transactionForm.type),
 );
@@ -75,6 +79,23 @@ const isTransactionNoteInvalid = computed(() =>
 const isTransactionAmountInvalid = computed(() =>
 	shouldShowTransactionValidation.value && Number(transactionForm.amount) <= 0,
 );
+const calculatorPreviewText = computed(() => {
+	if (!calculatorExpression.value.trim()) {
+		return "Resultado: R$ 0,00";
+	}
+
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			return "Resultado: valor negativo";
+		}
+
+		return `Resultado: ${formatCurrency(result)}`;
+	} catch {
+		return "Resultado: calculando...";
+	}
+});
 
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
 const totalInitialValue = computed(() =>
@@ -341,6 +362,7 @@ function openEditTransactionModal(row) {
 	transactionForm.note = row.note === "--" ? "" : row.note;
 	transactionForm.amount = Number(row.amount || 0);
 	amountInput.value = formatCurrency(transactionForm.amount);
+	closeCalculator();
 	pendingTransactionAction.value = "";
 	shouldShowTransactionValidation.value = false;
 	isEditTransactionModalOpen.value = true;
@@ -362,6 +384,7 @@ function closeEditTransactionModal(forceClose = false) {
 	transactionForm.note = "";
 	transactionForm.amount = 0;
 	amountInput.value = formatCurrency(0);
+	closeCalculator();
 }
 
 function openDeleteTransactionModal(row) {
@@ -437,6 +460,145 @@ function normalizeCurrencyText(value) {
 	return `${integerPart || "0"},${decimalPart}`;
 }
 
+function normalizeCalculatorExpression(value) {
+	return String(value ?? "")
+		.replace(/\s+/g, "")
+		.replace(/,/g, ".");
+}
+
+function tokenizeCalculatorExpression(expression) {
+	const tokens = [];
+	let index = 0;
+
+	while (index < expression.length) {
+		const character = expression[index];
+
+		if ("+-*/()".includes(character)) {
+			tokens.push(character);
+			index += 1;
+			continue;
+		}
+
+		if (/\d|\./.test(character)) {
+			let numberToken = character;
+			index += 1;
+
+			while (index < expression.length && /[\d.]/.test(expression[index])) {
+				numberToken += expression[index];
+				index += 1;
+			}
+
+			if (!/^\d+(\.\d+)?$|^\.\d+$/.test(numberToken)) {
+				throw new Error("Use apenas números e uma casa decimal por valor.");
+			}
+
+			tokens.push(numberToken);
+			continue;
+		}
+
+		throw new Error("Use apenas números, parênteses e + - * /.");
+	}
+
+	return tokens;
+}
+
+function evaluateCalculatorExpression(expression) {
+	const normalized = normalizeCalculatorExpression(expression);
+
+	if (!normalized) {
+		throw new Error("Digite uma fórmula para calcular.");
+	}
+
+	const tokens = tokenizeCalculatorExpression(normalized);
+	let currentIndex = 0;
+
+	function parseExpression() {
+		let value = parseTerm();
+
+		while (tokens[currentIndex] === "+" || tokens[currentIndex] === "-") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseTerm();
+			value = operator === "+" ? value + nextValue : value - nextValue;
+		}
+
+		return value;
+	}
+
+	function parseTerm() {
+		let value = parseFactor();
+
+		while (tokens[currentIndex] === "*" || tokens[currentIndex] === "/") {
+			const operator = tokens[currentIndex];
+			currentIndex += 1;
+			const nextValue = parseFactor();
+
+			if (operator === "/") {
+				if (nextValue === 0) {
+					throw new Error("Não é possível dividir por zero.");
+				}
+
+				value /= nextValue;
+				continue;
+			}
+
+			value *= nextValue;
+		}
+
+		return value;
+	}
+
+	function parseFactor() {
+		const token = tokens[currentIndex];
+
+		if (token === "+") {
+			currentIndex += 1;
+			return parseFactor();
+		}
+
+		if (token === "-") {
+			currentIndex += 1;
+			return -parseFactor();
+		}
+
+		if (token === "(") {
+			currentIndex += 1;
+			const value = parseExpression();
+
+			if (tokens[currentIndex] !== ")") {
+				throw new Error("Feche os parênteses da fórmula.");
+			}
+
+			currentIndex += 1;
+			return value;
+		}
+
+		if (token == null) {
+			throw new Error("Fórmula incompleta.");
+		}
+
+		const numericValue = Number(token);
+		if (!Number.isFinite(numericValue)) {
+			throw new Error("Fórmula inválida.");
+		}
+
+		currentIndex += 1;
+		return numericValue;
+	}
+
+	const result = parseExpression();
+
+	if (currentIndex !== tokens.length) {
+		throw new Error("Fórmula inválida.");
+	}
+
+	if (!Number.isFinite(result)) {
+		throw new Error("Não foi possível calcular esse valor.");
+	}
+
+	return result;
+}
+
 function parseCurrencyInput(value) {
 	const normalized = normalizeCurrencyText(value);
 	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
@@ -488,6 +650,11 @@ function syncAmountInput(event) {
 }
 
 function handleAmountInput(event) {
+	if (activeCalculatorField.value === "amount") {
+		calculatorExpression.value = "";
+		calculatorError.value = "";
+	}
+
 	syncAmountInput(event);
 }
 
@@ -508,6 +675,81 @@ function handleAmountFocus(event) {
 
 function handleAmountBlur() {
 	amountInput.value = formatCurrency(transactionForm.amount);
+}
+
+function formatCalculatorInitialValue(value) {
+	const numericValue = Number(value ?? 0);
+	if (!Number.isFinite(numericValue)) {
+		return "";
+	}
+
+	return numericValue.toFixed(2).replace(".", ",");
+}
+
+function closeCalculator() {
+	activeCalculatorField.value = "";
+	calculatorExpression.value = "";
+	calculatorError.value = "";
+}
+
+function toggleCalculator() {
+	if (activeCalculatorField.value === "amount") {
+		closeCalculator();
+		return;
+	}
+
+	activeCalculatorField.value = "amount";
+	calculatorExpression.value = formatCalculatorInitialValue(transactionForm.amount);
+	calculatorError.value = "";
+
+	void nextTick(() => {
+		const input = calculatorExpressionInputRef.value;
+		input?.focus?.();
+
+		if (input instanceof HTMLInputElement) {
+			if (input.value === "0,00") {
+				input.select();
+				return;
+			}
+
+			const caretPosition = input.value.length;
+			input.setSelectionRange(caretPosition, caretPosition);
+		}
+	});
+}
+
+function applyCalculatorResult() {
+	try {
+		const result = evaluateCalculatorExpression(calculatorExpression.value);
+
+		if (result < 0) {
+			calculatorError.value = "O resultado precisa ser zero ou maior.";
+			return;
+		}
+
+		transactionForm.amount = Number(result.toFixed(2));
+		amountInput.value = formatCurrency(transactionForm.amount);
+		closeCalculator();
+	} catch (error) {
+		calculatorError.value = error instanceof Error ? error.message : "Não foi possível calcular.";
+	}
+}
+
+function handleCalculatorExpressionKeydown(event) {
+	if (event.key === "Enter") {
+		event.preventDefault();
+		event.stopPropagation();
+		applyCalculatorResult();
+		return;
+	}
+
+	if (event.key !== "Escape") {
+		return;
+	}
+
+	event.preventDefault();
+	event.stopPropagation();
+	closeCalculator();
 }
 
 function compareMovementRows(leftRow, rightRow) {
@@ -1008,6 +1250,42 @@ function formatPeriodLabel(periodId) {
 									@input="handleAmountInput"
 									@blur="handleAmountBlur"
 								/>
+								<button
+									type="button"
+									class="calculator-toggle"
+									:class="{ 'is-open': activeCalculatorField === 'amount' }"
+									aria-label="Abrir calculadora"
+									@click="toggleCalculator"
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M7 3.75h10A2.25 2.25 0 0 1 19.25 6v12A2.25 2.25 0 0 1 17 20.25H7A2.25 2.25 0 0 1 4.75 18V6A2.25 2.25 0 0 1 7 3.75Z" />
+										<path d="M8 7.5h8M8.75 11.25h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5m-7.5 3h1.5m4.5 0h1.5" />
+									</svg>
+								</button>
+
+								<div v-if="activeCalculatorField === 'amount'" class="calculator-popover">
+									<label class="field-label" for="summary-calculator-input">Fórmula</label>
+									<div class="calculator-preview" aria-live="polite">{{ calculatorPreviewText }}</div>
+									<input
+										id="summary-calculator-input"
+										ref="calculatorExpressionInputRef"
+										v-model="calculatorExpression"
+										class="text-input"
+										type="text"
+										inputmode="decimal"
+										placeholder="Ex.: 450*3,5"
+										@keydown="handleCalculatorExpressionKeydown"
+									/>
+									<div v-if="calculatorError" class="error-text">{{ calculatorError }}</div>
+									<div class="calculator-popover-actions">
+										<button type="button" class="primary-button calculator-apply-button" @click="applyCalculatorResult">
+											Aplicar
+										</button>
+										<button type="button" class="danger-button" @click="closeCalculator">
+											Cancelar
+										</button>
+									</div>
+								</div>
 							</div>
 						</div>
 						<div v-if="isTransactionAmountInvalid" class="error-text">Informe um valor maior que zero.</div>
@@ -1853,6 +2131,76 @@ function formatPeriodLabel(periodId) {
 	position: relative;
 	display: flex;
 	align-items: center;
+}
+
+.currency-input-shell input {
+	padding-right: 54px;
+}
+
+.calculator-toggle {
+	position: absolute;
+	top: 50%;
+	right: 12px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-soft);
+	transform: translateY(-50%);
+}
+
+.calculator-toggle:hover,
+.calculator-toggle.is-open {
+	color: var(--color-primary);
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+	transform: translateY(-50%);
+}
+
+.calculator-toggle svg {
+	width: 18px;
+	height: 18px;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	fill: none;
+}
+
+.calculator-popover {
+	position: absolute;
+	top: calc(100% + 10px);
+	right: 0;
+	z-index: 5;
+	display: grid;
+	gap: 10px;
+	width: min(280px, calc(100vw - 72px));
+	padding: 14px;
+	border: 1px solid var(--glass-border-strong);
+	border-radius: 18px;
+	background: color-mix(in srgb, var(--glass-surface) 92%, rgba(8, 17, 31, 0.94));
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(22px);
+}
+
+.calculator-preview {
+	padding: 10px 12px;
+	border: 1px solid var(--glass-border);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--glass-surface-strong) 72%, transparent);
+	color: var(--text-soft);
+	font-size: 0.92rem;
+}
+
+.calculator-popover-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.calculator-apply-button {
+	min-width: 88px;
 }
 
 .modal-grid :deep(.app-select__trigger) {
