@@ -347,6 +347,7 @@ watch(
 	{ immediate: true },
 );
 
+// Alterna quais ativos entram no recorte anual.
 function toggleAnnualAssetSelection(assetId) {
 	if (!assetId) {
 		return;
@@ -364,6 +365,7 @@ function toggleAnnualAssetSelection(assetId) {
 	selectedAnnualAssetIds.value = [...selectedAnnualAssetIds.value, assetId];
 }
 
+// Define a ordenação padrão das movimentações.
 function getDefaultMovementSort(sortKey = "period") {
 	return {
 		key: sortKey,
@@ -371,6 +373,7 @@ function getDefaultMovementSort(sortKey = "period") {
 	};
 }
 
+// Inverte ou redefine o critério de ordenação da tabela.
 function toggleMovementSort(sortKey) {
 	const currentState = movementSortState.value;
 
@@ -382,14 +385,17 @@ function toggleMovementSort(sortKey) {
 		: getDefaultMovementSort(sortKey);
 }
 
+// Diz se a coluna atual está sendo usada na ordenação.
 function isMovementSortActive(sortKey) {
 	return movementSortState.value.key === sortKey;
 }
 
+// Retorna a direção visível para o cabeçalho da tabela.
 function getMovementSortDirection(sortKey) {
 	return isMovementSortActive(sortKey) ? movementSortState.value.direction : "asc";
 }
 
+// Navega entre páginas sem sair do intervalo válido.
 function goToMovementPage(nextPage) {
 	if (nextPage < 1 || nextPage > movementPageCount.value) {
 		return;
@@ -398,6 +404,7 @@ function goToMovementPage(nextPage) {
 	movementPage.value = nextPage;
 }
 
+// Copia a linha selecionada para o formulário de edição.
 function openEditTransactionModal(row) {
 	if (!row?.id || props.isSubmitting) {
 		return;
@@ -418,6 +425,7 @@ function openEditTransactionModal(row) {
 	});
 }
 
+// Fecha o modal de edição e reseta o formulário.
 function closeEditTransactionModal(forceClose = false) {
 	if (!forceClose && props.isSubmitting) {
 		return;
@@ -434,6 +442,7 @@ function closeEditTransactionModal(forceClose = false) {
 	closeCalculator();
 }
 
+// Prepara o alvo antes da confirmação de exclusão.
 function openDeleteTransactionModal(row) {
 	if (!row?.id || props.isSubmitting) {
 		return;
@@ -448,6 +457,7 @@ function openDeleteTransactionModal(row) {
 	pendingTransactionAction.value = "";
 }
 
+// Fecha o modal de exclusão sem interferir no submit.
 function closeDeleteTransactionModal(forceClose = false) {
 	if (!forceClose && props.isSubmitting) {
 		return;
@@ -456,6 +466,7 @@ function closeDeleteTransactionModal(forceClose = false) {
 	deleteTransactionTarget.value = null;
 }
 
+// Centraliza a validação do formulário de movimentação.
 function isTransactionFormInvalid() {
 	return (
 		!transactionForm.id
@@ -466,6 +477,7 @@ function isTransactionFormInvalid() {
 	);
 }
 
+// Emite a edição só quando os campos estão consistentes.
 function submitTransactionEdit() {
 	shouldShowTransactionValidation.value = true;
 
@@ -483,6 +495,7 @@ function submitTransactionEdit() {
 	});
 }
 
+// Dispara a exclusão da movimentação selecionada.
 function confirmTransactionDelete() {
 	if (!deleteTransactionTarget.value?.id || props.isSubmitting) {
 		return;
@@ -492,6 +505,7 @@ function confirmTransactionDelete() {
 	emit("delete-transaction", deleteTransactionTarget.value.id);
 }
 
+// Limpa o texto monetário mantendo a parte decimal.
 function normalizeCurrencyText(value) {
 	const raw = String(value ?? "").replace("R$ ", "");
 	const sanitized = raw.replace(/[^\d,]/g, "");
@@ -513,6 +527,7 @@ function normalizeCalculatorExpression(value) {
 		.replace(/,/g, ".");
 }
 
+// Quebra a expressão em tokens antes da avaliação.
 function tokenizeCalculatorExpression(expression) {
 	const tokens = [];
 	let index = 0;
@@ -549,6 +564,7 @@ function tokenizeCalculatorExpression(expression) {
 	return tokens;
 }
 
+// Avalia a fórmula com precedência simples e mensagens claras.
 function evaluateCalculatorExpression(expression) {
 	const normalized = normalizeCalculatorExpression(expression);
 
@@ -646,6 +662,7 @@ function evaluateCalculatorExpression(expression) {
 	return result;
 }
 
+// Converte a string monetária em número para edição.
 function parseCurrencyInput(value) {
 	const normalized = normalizeCurrencyText(value);
 	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
@@ -654,6 +671,7 @@ function parseCurrencyInput(value) {
 	return integerValue + fractionValue / 100;
 }
 
+// Restringe a digitação ao padrão esperado pelo campo.
 function handleCurrencyKeydown(event) {
 	if (
 		event.ctrlKey ||
@@ -681,6 +699,7 @@ function handleCurrencyKeydown(event) {
 	event.preventDefault();
 }
 
+// Sincroniza o valor bruto e o texto visível do input.
 function syncAmountInput(event) {
 	const target = event?.target instanceof HTMLInputElement ? event.target : null;
 	const rawValue = target?.value ?? "";
@@ -696,6 +715,7 @@ function syncAmountInput(event) {
 	}
 }
 
+// Limpa a calculadora quando o usuário volta a editar manualmente.
 function handleAmountInput(event) {
 	if (activeCalculatorField.value === "amount") {
 		calculatorExpression.value = "";
@@ -705,6 +725,7 @@ function handleAmountInput(event) {
 	syncAmountInput(event);
 }
 
+// Mostra o prefixo monetário só quando o campo está vazio.
 function handleAmountFocus(event) {
 	const target = event?.target;
 
@@ -720,10 +741,12 @@ function handleAmountFocus(event) {
 	}
 }
 
+// Reaplica o formato monetário ao sair do campo.
 function handleAmountBlur() {
 	amountInput.value = formatCurrency(transactionForm.amount);
 }
 
+// Abre a calculadora com o valor atual como base.
 function formatCalculatorInitialValue(value) {
 	const numericValue = Number(value ?? 0);
 	if (!Number.isFinite(numericValue)) {
@@ -733,12 +756,14 @@ function formatCalculatorInitialValue(value) {
 	return numericValue.toFixed(2).replace(".", ",");
 }
 
+// Fecha a calculadora e remove mensagens transitórias.
 function closeCalculator() {
 	activeCalculatorField.value = "";
 	calculatorExpression.value = "";
 	calculatorError.value = "";
 }
 
+// Alterna a calculadora sem perder o valor digitado.
 function toggleCalculator() {
 	if (activeCalculatorField.value === "amount") {
 		closeCalculator();
@@ -765,6 +790,7 @@ function toggleCalculator() {
 	});
 }
 
+// Aplica o resultado da fórmula apenas se ele for válido.
 function applyCalculatorResult() {
 	try {
 		const result = evaluateCalculatorExpression(calculatorExpression.value);
@@ -782,6 +808,7 @@ function applyCalculatorResult() {
 	}
 }
 
+// Permite confirmar ou cancelar a fórmula via teclado.
 function handleCalculatorExpressionKeydown(event) {
 	if (event.key === "Enter") {
 		event.preventDefault();
@@ -799,6 +826,7 @@ function handleCalculatorExpressionKeydown(event) {
 	closeCalculator();
 }
 
+// Ordena a tabela de movimentações por período, data e id.
 function compareMovementRows(leftRow, rightRow) {
 	if (movementSortState.value.key === "date") {
 		return compareTransactionRows(leftRow, rightRow);
@@ -823,6 +851,7 @@ function compareMovementRows(leftRow, rightRow) {
 	return leftRow.assetName.localeCompare(rightRow.assetName, "pt-BR", { sensitivity: "base" });
 }
 
+// Ordena as saídas por período, data e identificador.
 function compareTransactionRows(leftRow, rightRow) {
 	const dateCompare = leftRow.transactionDate.localeCompare(rightRow.transactionDate, "pt-BR");
 	if (dateCompare !== 0) {
@@ -832,6 +861,7 @@ function compareTransactionRows(leftRow, rightRow) {
 	return leftRow.id.localeCompare(rightRow.id, "pt-BR", { sensitivity: "base" });
 }
 
+// Exibe valores em BRL com leitura consistente.
 function formatCurrency(value) {
 	return new Intl.NumberFormat("pt-BR", {
 		style: "currency",
@@ -841,10 +871,12 @@ function formatCurrency(value) {
 	}).format(Number(value || 0));
 }
 
+// Mostra números vazios como traço para evitar ruído visual.
 function formatValue(value) {
 	return value == null ? "--" : formatCurrency(value);
 }
 
+// Traduz o tipo técnico para um rótulo mais legível.
 function formatMovementType(type) {
 	if (type === "contribution") {
 		return "Aporte";
@@ -861,11 +893,13 @@ function formatMovementType(type) {
 	return "--";
 }
 
+// Extrai o ano do id do período sem depender de label.
 function getPeriodYear(periodId) {
 	const match = /^(\d{4})-(\d{2})$/.exec(String(periodId || ""));
 	return match ? Number(match[1]) : null;
 }
 
+// Converte o id do período em um rótulo amigável.
 function formatPeriodLabel(periodId) {
 	const match = /^(\d{4})-(\d{2})$/.exec(String(periodId || ""));
 	if (!match) {
@@ -878,6 +912,7 @@ function formatPeriodLabel(periodId) {
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+// Encosta a data da movimentação em um formato curto.
 function formatTransactionDate(value) {
 	const normalized = String(value || "").trim();
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {

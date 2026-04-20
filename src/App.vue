@@ -183,6 +183,7 @@ const navigationTabs = computed(() => {
 	];
 });
 
+// Converte a cor principal em RGB para gerar tons derivados.
 function hexToRgb(hexColor) {
 	const normalized = String(hexColor || "").trim().replace("#", "");
 
@@ -197,6 +198,7 @@ function hexToRgb(hexColor) {
 	};
 }
 
+// Mistura duas cores para criar variações suaves do tema.
 function mixHex(hexColor, target, weight) {
 	const base = hexToRgb(hexColor);
 	if (!base) {
@@ -213,6 +215,7 @@ function mixHex(hexColor, target, weight) {
 	return `#${[mixed.r, mixed.g, mixed.b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
+// Mantém a barra do navegador alinhada ao tema ativo.
 function syncBrowserThemeColor(activeTheme) {
 	const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 	if (!themeColorMeta) {
@@ -222,10 +225,12 @@ function syncBrowserThemeColor(activeTheme) {
 	themeColorMeta.setAttribute("content", activeTheme === "dark" ? "#08111f" : "#f3f7ff");
 }
 
+// Centraliza o caminho do documento de preferências do usuário.
 function userConfigDoc(uid) {
 	return doc(db, "users", uid, "configs", "preferences");
 }
 
+// Valida valores persistidos antes de reaplicá-los na UI.
 function normalizeStoredYear(value) {
 	const normalized = Number(value);
 	return Number.isInteger(normalized) && normalized >= 2000 ? normalized : null;
@@ -236,6 +241,7 @@ function normalizeStoredMonth(value) {
 	return Number.isInteger(normalized) && normalized >= 1 && normalized <= 12 ? normalized : null;
 }
 
+// Aplica o tema e o acento no documento antes de atualizar a meta tag.
 function applyTheme() {
 	const activeTheme = theme.value;
 	const accent = currentColor.value;
@@ -247,6 +253,7 @@ function applyTheme() {
 	syncBrowserThemeColor(activeTheme);
 }
 
+// Gera um rótulo curto quando o período ainda não tem label salvo.
 function buildMonthLabel(year, month) {
 	const normalizedYear = Number(year);
 	const normalizedMonth = Number(month);
@@ -258,10 +265,12 @@ function buildMonthLabel(year, month) {
 	return `${String(normalizedMonth).padStart(2, "0")}/${normalizedYear}`;
 }
 
+// Evita criar ou selecionar períodos que ainda não existem.
 function periodExists(year, month) {
 	return periods.value.some((period) => period.year === year && period.month === month);
 }
 
+// Escolhe o período mais coerente entre preferência, seleção e dados disponíveis.
 function resolveSelectedPeriod() {
 	if (periods.value.length === 0) {
 		selectedYear.value = preferredPeriod.value.year ?? defaultPeriod.year;
@@ -284,6 +293,7 @@ function resolveSelectedPeriod() {
 	selectedMonth.value = latestPeriod.month;
 }
 
+// Cria o período inicial só uma vez quando a base ainda está vazia.
 async function ensureDefaultStartingPeriod(uid) {
 	if (!uid || periods.value.length > 0 || isCreatingDefaultPeriod) {
 		return;
@@ -298,6 +308,7 @@ async function ensureDefaultStartingPeriod(uid) {
 	}
 }
 
+// Persiste preferências locais e mantém o estado reativo sincronizado.
 async function savePreferences(patch) {
 	if (!currentUser.value || !db) {
 		return;
@@ -335,6 +346,7 @@ async function savePreferences(patch) {
 	}
 }
 
+// Escuta preferências do usuário em tempo real.
 function listenPreferences(uid) {
 	if (!db) {
 		hasLoadedUiPreferences.value = true;
@@ -365,6 +377,7 @@ function listenPreferences(uid) {
 	});
 }
 
+// Escuta a coleção de períodos para manter filtros e seleção atualizados.
 function listenPeriods(uid) {
 	hasLoadedPeriods.value = false;
 	unsubscribePeriods?.();
@@ -379,6 +392,7 @@ function listenPeriods(uid) {
 	});
 }
 
+// Escuta os ativos do usuário sem depender de cache local.
 function listenAssets(uid) {
 	hasLoadedAssets.value = false;
 	unsubscribeAssets?.();
@@ -388,6 +402,7 @@ function listenAssets(uid) {
 	});
 }
 
+// Escuta os snapshots mensais usados pela Home e pelo Resumo.
 function listenAssetMonthlyStates(uid) {
 	hasLoadedMonthlyStates.value = false;
 	unsubscribeAssetMonthlyStates?.();
@@ -397,6 +412,7 @@ function listenAssetMonthlyStates(uid) {
 	});
 }
 
+// Escuta movimentações para refletir alterações imediatamente.
 function listenTransactions(uid) {
 	hasLoadedTransactions.value = false;
 	unsubscribeTransactions?.();
@@ -406,6 +422,7 @@ function listenTransactions(uid) {
 	});
 }
 
+// Inicia a autenticação com Google e expõe erro legível se falhar.
 async function handleGoogleSignIn() {
 	if (!auth) {
 		errorMessage.value = "Firebase não inicializado. Verifique a configuração do projeto.";
@@ -424,6 +441,7 @@ async function handleGoogleSignIn() {
 	}
 }
 
+// Encerra a sessão atual e limpa o estado controlado.
 async function handleSignOut() {
 	if (!auth) {
 		return;
@@ -438,11 +456,13 @@ async function handleSignOut() {
 	}
 }
 
+// Guarda o callback do update para disparar a atualização depois.
 function handleAppUpdateAvailable(event) {
 	triggerAppUpdate = typeof event.detail?.update === "function" ? event.detail.update : null;
 	isUpdateAvailable.value = true;
 }
 
+// Recarrega o app usando a nova versão do service worker.
 function reloadWithNewVersion() {
 	if (!triggerAppUpdate) {
 		window.location.reload();
@@ -452,10 +472,12 @@ function reloadWithNewVersion() {
 	triggerAppUpdate();
 }
 
+// Detecta se o app já está rodando fora do navegador.
 function isRunningAsInstalledApp() {
 	return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
 
+// Lê o marcador de instalação salvo em sessão anterior.
 function readInstalledAppFlag() {
 	try {
 		return window.localStorage.getItem(INSTALLED_APP_STORAGE_KEY) === "true";
@@ -464,6 +486,7 @@ function readInstalledAppFlag() {
 	}
 }
 
+// Atualiza o marcador local que ajuda a esconder o prompt.
 function writeInstalledAppFlag(value) {
 	try {
 		if (value) {
@@ -477,11 +500,13 @@ function writeInstalledAppFlag(value) {
 	}
 }
 
+// Sincroniza os estados derivados do fluxo de instalação.
 function syncInstallAvailability() {
 	isAppInstalled.value = hasInstalledApp.value || isRunningAsInstalledApp();
 	canInstallApp.value = Boolean(deferredInstallPrompt) && !isAppInstalled.value;
 }
 
+// Captura o prompt nativo de instalação para exibi-lo sob demanda.
 function handleBeforeInstallPrompt(event) {
 	if (isRunningAsInstalledApp()) {
 		return;
@@ -491,6 +516,7 @@ function handleBeforeInstallPrompt(event) {
 	syncInstallAvailability();
 }
 
+// Marca a instalação como concluída e limpa o prompt pendente.
 function handleAppInstalled() {
 	hasInstalledApp.value = true;
 	writeInstalledAppFlag(true);
@@ -499,6 +525,7 @@ function handleAppInstalled() {
 	syncInstallAvailability();
 }
 
+// Dispara o prompt nativo de instalação quando ele estiver disponível.
 async function handleInstallApp() {
 	if (!deferredInstallPrompt || isInstallingApp.value) {
 		return;
@@ -521,6 +548,7 @@ async function handleInstallApp() {
 	}
 }
 
+// Reseta toda a sessão para um estado limpo ao deslogar.
 function clearUserState() {
 	unsubscribePreferences?.();
 	unsubscribePeriods?.();
@@ -552,6 +580,7 @@ function clearUserState() {
 	applyTheme();
 }
 
+// Bloqueia a navegação principal para usuários não autenticados.
 function handleTabSelection(nextPage) {
 	if (!isAuthenticated.value && nextPage !== "settings") {
 		currentPage.value = "settings";
@@ -561,6 +590,7 @@ function handleTabSelection(nextPage) {
 	currentPage.value = nextPage;
 }
 
+// Abre o modal já preenchendo o período atualmente selecionado.
 function openPeriodModal() {
 	periodModalYear.value = selectedYear.value || today.getFullYear();
 	periodModalMonth.value = selectedMonth.value || today.getMonth() + 1;
@@ -576,6 +606,7 @@ function closePeriodModal() {
 	shouldShowPeriodValidation.value = false;
 }
 
+// Pré-carrega o período alvo antes de confirmar a exclusão.
 function openDeletePeriodModal() {
 	if (!selectedPeriod.value || !currentUser.value) {
 		return;
@@ -597,6 +628,7 @@ function closeDeletePeriodModal() {
 	deletePeriodTarget.value = null;
 }
 
+// Seleciona o ativo alvo antes da confirmação de exclusão.
 function openDeleteAssetModal(asset) {
 	if (!currentUser.value || !asset?.id) {
 		return;
@@ -616,6 +648,7 @@ function closeDeleteAssetModal() {
 	deleteAssetTarget.value = null;
 }
 
+// Descobre qual modal está ativo para tratar Escape e Enter.
 function getActiveModalActions() {
 	if (isPeriodModalOpen.value) {
 		return {
@@ -641,6 +674,7 @@ function getActiveModalActions() {
 	return null;
 }
 
+// Evita interceptar atalhos quando o foco está em um campo editável.
 function isKeyboardShortcutTargetBlocked() {
 	const activeElement = document.activeElement;
 
@@ -660,6 +694,7 @@ function isKeyboardShortcutTargetBlocked() {
 	);
 }
 
+// Direciona Enter e Escape para o modal ativo sem quebrar inputs.
 function handleModalKeydown(event) {
 	if (isSubmitting.value) {
 		return;
@@ -684,6 +719,7 @@ function handleModalKeydown(event) {
 	void modalActions.confirm();
 }
 
+// Cria o período se necessário e troca a seleção para ele.
 async function savePeriod() {
 	if (!currentUser.value || isPeriodFormInvalid.value) {
 		return;
@@ -709,6 +745,7 @@ async function savePeriod() {
 	}
 }
 
+// Remove o período selecionado e seus dados dependentes.
 async function deleteSelectedPeriod() {
 	if (!selectedPeriod.value || !currentUser.value) {
 		return;
@@ -728,6 +765,7 @@ async function deleteSelectedPeriod() {
 	}
 }
 
+// Confirma a exclusão e fecha o modal só após sucesso.
 async function confirmDeleteSelectedPeriod() {
 	if (!deletePeriodTarget.value || !currentUser.value) {
 		return;
@@ -748,6 +786,7 @@ async function confirmDeleteSelectedPeriod() {
 	}
 }
 
+// Cria um ativo já com o snapshot mensal inicial do período ativo.
 async function handleCreateAsset(assetInput) {
 	if (!currentUser.value) {
 		return;
@@ -768,6 +807,7 @@ async function handleCreateAsset(assetInput) {
 	}
 }
 
+// Envia a ação da Home com o contexto do ativo e do período.
 async function handleHomeAssetAction(actionInput) {
 	if (!currentUser.value || !selectedPeriodId.value) {
 		return;
@@ -812,6 +852,7 @@ async function handleHomeAssetAction(actionInput) {
 	}
 }
 
+// Atualiza o cadastro do ativo e o estado inicial relacionado.
 async function handleUpdateAsset(assetInput) {
 	if (!currentUser.value || !assetInput?.id) {
 		return;
@@ -829,6 +870,7 @@ async function handleUpdateAsset(assetInput) {
 	}
 }
 
+// Regrava a transação editada e recalcula o resumo correspondente.
 async function handleUpdateTransaction(transactionInput) {
 	if (!currentUser.value || !transactionInput?.id) {
 		return;
@@ -846,6 +888,7 @@ async function handleUpdateTransaction(transactionInput) {
 	}
 }
 
+// Exclui a movimentação e dispara a recomposição do mês.
 async function handleDeleteTransaction(transactionId) {
 	if (!currentUser.value || !transactionId) {
 		return;
@@ -863,6 +906,7 @@ async function handleDeleteTransaction(transactionId) {
 	}
 }
 
+// Remove o ativo em cascata e fecha o modal só quando concluir.
 async function confirmDeleteAsset() {
 	if (!currentUser.value || !deleteAssetTarget.value?.id) {
 		return;

@@ -31,6 +31,7 @@ function getMissingFirebaseEnvKeys() {
   });
 }
 
+// Inicializa o app apenas quando o ambiente estiver completo.
 export function initializeFirebaseApp() {
   const missingKeys = getMissingFirebaseEnvKeys();
 
@@ -46,6 +47,7 @@ export function initializeFirebaseApp() {
   return firebaseApp;
 }
 
+// Reaproveita a instância de Auth já criada pelo app.
 export function getFirebaseAuth() {
   if (!firebaseAuth) {
     initializeFirebaseApp();
@@ -54,6 +56,7 @@ export function getFirebaseAuth() {
   return firebaseAuth;
 }
 
+// Reaproveita a instância de Firestore já criada pelo app.
 export function getFirebaseDb() {
   if (!firebaseDb) {
     initializeFirebaseApp();

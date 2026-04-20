@@ -209,20 +209,24 @@ function formatDate(value) {
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+// Localiza o snapshot mensal do ativo no período selecionado.
 function getAssetMonthlyState(assetId) {
 	return selectedPeriodStateMap.value.get(assetId) || null;
 }
 
+// Usa o valor mensal atual e cai no valor inicial quando necessário.
 function getAssetCapitalInvested(asset) {
 	return Number(getAssetMonthlyState(asset?.id)?.currentCapitalInvested ?? asset?.initialValue ?? 0);
 }
 
+// Gera a data local no formato que o input aceita.
 function getTodayDateInputValue() {
 	const now = new Date();
 	const timezoneOffset = now.getTimezoneOffset() * 60_000;
 	return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
 }
 
+// Limpa a entrada monetária sem destruir a intenção do usuário.
 function normalizeCurrencyText(value) {
 	const raw = String(value ?? "").replace("R$ ", "");
 	const sanitized = raw.replace(/[^\d,]/g, "");
@@ -238,6 +242,7 @@ function normalizeCurrencyText(value) {
 	return `${integerPart || "0"},${decimalPart}`;
 }
 
+// Converte o texto exibido em número para cálculo interno.
 function parseCurrencyInput(value) {
 	const normalized = normalizeCurrencyText(value);
 	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
@@ -252,6 +257,7 @@ function normalizeCalculatorExpression(value) {
 		.replace(/,/g, ".");
 }
 
+// Quebra a expressão em tokens simples para validar a fórmula.
 function tokenizeCalculatorExpression(expression) {
 	const tokens = [];
 	let index = 0;
@@ -288,6 +294,7 @@ function tokenizeCalculatorExpression(expression) {
 	return tokens;
 }
 
+// Avalia a expressão mantendo precedência e erros legíveis.
 function evaluateCalculatorExpression(expression) {
 	const normalized = normalizeCalculatorExpression(expression);
 
@@ -385,6 +392,7 @@ function evaluateCalculatorExpression(expression) {
 	return result;
 }
 
+// Sincroniza o valor numérico e o texto formatado do campo.
 function setCurrencyField(fieldKey, nextValue) {
 	const normalizedValue = Number.isFinite(nextValue) ? Number(nextValue.toFixed(2)) : 0;
 	actionForm[fieldKey] = normalizedValue;
@@ -402,6 +410,7 @@ function setCurrencyField(fieldKey, nextValue) {
 	grossBalanceInput.value = formatCurrency(normalizedValue);
 }
 
+// Transforma o valor atual em base amigável para a calculadora.
 function formatCalculatorInitialValue(value) {
 	const numericValue = Number(value ?? 0);
 	if (!Number.isFinite(numericValue)) {
@@ -411,6 +420,7 @@ function formatCalculatorInitialValue(value) {
 	return numericValue.toFixed(2).replace(".", ",");
 }
 
+// Fecha a calculadora e limpa estado temporário.
 function closeCalculator() {
 	activeCalculatorField.value = "";
 	calculatorExpression.value = "";
@@ -576,6 +586,7 @@ function handleCalculatorExpressionKeydown(event) {
 	closeCalculator();
 }
 
+// Recarrega o formulário com um estado neutro e consistente.
 function resetActionForm() {
 	shouldShowActionValidation.value = false;
 	actionForm.date = getTodayDateInputValue();
@@ -586,6 +597,7 @@ function resetActionForm() {
 	closeCalculator();
 }
 
+// Prepara o modal com o ativo e o tipo de ação escolhidos.
 function openActionModal(type, asset) {
 	if (!asset?.id || props.isSubmitting) {
 		return;
@@ -602,6 +614,7 @@ function openActionModal(type, asset) {
 	});
 }
 
+// Limpa o modal sem depender de confirmação externa.
 function finalizeActionModalClose() {
 	isActionModalOpen.value = false;
 	shouldShowActionValidation.value = false;
@@ -612,6 +625,7 @@ function finalizeActionModalClose() {
 	resetActionForm();
 }
 
+// Bloqueia fechamento enquanto a gravação ainda está em andamento.
 function closeActionModal() {
 	if (props.isSubmitting) {
 		return;
@@ -620,6 +634,7 @@ function closeActionModal() {
 	finalizeActionModalClose();
 }
 
+// Valida os campos obrigatórios sem espalhar regra pelo template.
 function hasActionFormErrors() {
 	if (!actionForm.date) {
 		return true;
@@ -640,6 +655,7 @@ function hasActionFormErrors() {
 	return false;
 }
 
+// Emite a ação só quando o formulário está coerente.
 function submitAction() {
 	shouldShowActionValidation.value = true;
 
@@ -659,6 +675,7 @@ function submitAction() {
 	});
 }
 
+// Evita capturar Enter/Escape quando o foco está em um controle editável.
 function isKeyboardShortcutTargetBlocked() {
 	const activeElement = document.activeElement;
 
@@ -678,6 +695,7 @@ function isKeyboardShortcutTargetBlocked() {
 	);
 }
 
+// Direciona atalhos do teclado para o modal ativo.
 function handleActionModalKeydown(event) {
 	if (!isActionModalOpen.value || props.isSubmitting) {
 		return;
@@ -697,6 +715,7 @@ function handleActionModalKeydown(event) {
 	submitAction();
 }
 
+// Ajusta a compactação do card principal conforme a rolagem.
 function handleWindowScroll() {
 	isWalletCardCompact.value = window.scrollY > 120;
 }

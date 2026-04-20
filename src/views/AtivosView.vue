@@ -101,10 +101,12 @@ watch(
 	},
 );
 
+// Formata valores para exibição consistente em BRL.
 function formatCurrency(value) {
 	return currencyFormatter.format(Number(value || 0));
 }
 
+// Gera uma cor de destaque estável o suficiente para novos ativos.
 function generateRandomAssetColor() {
 	const hue = Math.floor(Math.random() * 360);
 	const saturation = 70 + Math.floor(Math.random() * 18);
@@ -112,11 +114,13 @@ function generateRandomAssetColor() {
 	return hslToHex(hue, saturation, lightness);
 }
 
+// Garante uma cor válida antes de persistir o ativo.
 function normalizeAssetColor(value) {
 	const normalized = String(value || "").trim().toUpperCase();
 	return /^#[\dA-F]{6}$/.test(normalized) ? normalized : "#4F7CFF";
 }
 
+// Converte HSL em hex para o gerador automático de cores.
 function hslToHex(hue, saturation, lightness) {
 	const normalizedSaturation = saturation / 100;
 	const normalizedLightness = lightness / 100;
@@ -153,6 +157,7 @@ function hslToHex(hue, saturation, lightness) {
 	return `#${toHex(red)}${toHex(green)}${toHex(blue)}`.toUpperCase();
 }
 
+// Mostra a data inicial em um formato curto para leitura rápida.
 function formatDate(value) {
 	if (!value) {
 		return "Data não informada";
@@ -166,6 +171,7 @@ function formatDate(value) {
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+// Limpa o texto monetário sem perder vírgula decimal.
 function normalizeCurrencyText(value) {
 	const raw = String(value ?? "").replace("R$ ", "");
 	const sanitized = raw.replace(/[^\d,]/g, "");
@@ -181,6 +187,7 @@ function normalizeCurrencyText(value) {
 	return `${integerPart || "0"},${decimalPart}`;
 }
 
+// Transforma a string monetária do campo em número real.
 function parseCurrencyInput(value) {
 	const normalized = normalizeCurrencyText(value);
 	const [integerPart = "0", decimalPart = ""] = normalized.split(",");
@@ -195,6 +202,7 @@ function normalizeCalculatorExpression(value) {
 		.replace(/,/g, ".");
 }
 
+// Separa a fórmula em blocos simples para validação.
 function tokenizeCalculatorExpression(expression) {
 	const tokens = [];
 	let index = 0;
@@ -231,6 +239,7 @@ function tokenizeCalculatorExpression(expression) {
 	return tokens;
 }
 
+// Resolve a fórmula com precedência básica e erros claros.
 function evaluateCalculatorExpression(expression) {
 	const normalized = normalizeCalculatorExpression(expression);
 
@@ -328,11 +337,13 @@ function evaluateCalculatorExpression(expression) {
 	return result;
 }
 
+// Mantém o valor bruto e o texto do input sempre alinhados.
 function setCurrencyInput(value) {
 	assetForm.initialValue = Number(value ?? 0);
 	assetInitialValueInput.value = formatCurrency(assetForm.initialValue);
 }
 
+// Fecha a calculadora embutida e reseta o estado temporário.
 function closeCalculator() {
 	activeCalculatorField.value = "";
 	calculatorExpression.value = "";
@@ -348,6 +359,7 @@ function formatCalculatorInitialValue(value) {
 	return numericValue.toFixed(2).replace(".", ",");
 }
 
+// Reinicia o formulário com valores prontos para cadastro.
 function resetForm() {
 	assetForm.name = "";
 	assetForm.institution = "";
@@ -360,12 +372,14 @@ function resetForm() {
 	closeCalculator();
 }
 
+// Limpa o modal sem reaproveitar resíduos de edição anterior.
 function finalizeModalClose() {
 	pendingSubmitMode.value = "";
 	isCreateModalOpen.value = false;
 	resetForm();
 }
 
+// Abre o modal em modo de criação.
 function openCreateModal() {
 	resetForm();
 	isCreateModalOpen.value = true;
@@ -374,6 +388,7 @@ function openCreateModal() {
 	});
 }
 
+// Copia os dados do ativo para edição no mesmo formulário.
 function openEditModal(asset) {
 	resetForm();
 	editingAssetId.value = asset.id || "";
@@ -389,6 +404,7 @@ function openEditModal(asset) {
 	});
 }
 
+// Bloqueia o fechamento enquanto a gravação estiver ativa.
 function closeCreateModal() {
 	if (props.isSubmitting) {
 		return;
@@ -397,6 +413,7 @@ function closeCreateModal() {
 	finalizeModalClose();
 }
 
+// Normaliza o campo de cor manual para manter o hex válido.
 function syncAssetColorInput(event) {
 	const target = event?.target instanceof HTMLInputElement ? event.target : null;
 	if (!target) {
@@ -409,10 +426,12 @@ function syncAssetColorInput(event) {
 	target.value = assetForm.color;
 }
 
+// Centraliza a validação mínima do cadastro.
 function hasFormErrors() {
 	return !assetForm.name.trim() || !assetForm.startDate || assetForm.initialValue <= 0;
 }
 
+// Espelha o texto digitado no número persistido.
 function syncCurrencyInput(event) {
 	const target = event?.target instanceof HTMLInputElement ? event.target : null;
 	const rawValue = target?.value ?? "";
@@ -428,6 +447,7 @@ function syncCurrencyInput(event) {
 	}
 }
 
+// Limpa a fórmula quando o usuário volta a digitar manualmente.
 function handleCurrencyInput(event) {
 	if (activeCalculatorField.value === "initialValue") {
 		calculatorExpression.value = "";
@@ -437,6 +457,7 @@ function handleCurrencyInput(event) {
 	syncCurrencyInput(event);
 }
 
+// Alterna a calculadora sem perder o valor atual do campo.
 function toggleCalculator() {
 	if (activeCalculatorField.value === "initialValue") {
 		closeCalculator();
@@ -463,6 +484,7 @@ function toggleCalculator() {
 	});
 }
 
+// Aplica o resultado validado diretamente ao valor inicial.
 function applyCalculatorResult() {
 	try {
 		const result = evaluateCalculatorExpression(calculatorExpression.value);
@@ -479,6 +501,7 @@ function applyCalculatorResult() {
 	}
 }
 
+// Permite confirmar ou cancelar a fórmula pelo teclado.
 function handleCalculatorExpressionKeydown(event) {
 	if (event.key === "Enter") {
 		event.preventDefault();
@@ -496,6 +519,7 @@ function handleCalculatorExpressionKeydown(event) {
 	closeCalculator();
 }
 
+// Revela o prefixo monetário apenas quando o campo está vazio.
 function handleInitialValueFocus(event) {
 	const target = event?.target;
 
@@ -511,10 +535,12 @@ function handleInitialValueFocus(event) {
 	}
 }
 
+// Reaplica o formato monetário ao perder o foco.
 function handleInitialValueBlur() {
 	setCurrencyInput(assetForm.initialValue);
 }
 
+// Restringe a digitação ao conjunto aceito pelo campo monetário.
 function handleCurrencyKeydown(event) {
 	const allowedKeys = [
 		"Backspace",
@@ -543,6 +569,7 @@ function handleCurrencyKeydown(event) {
 	event.preventDefault();
 }
 
+// Emite criação ou edição só quando o formulário passou na validação.
 function submitAsset() {
 	if (hasFormErrors()) {
 		return;
@@ -570,6 +597,7 @@ function submitAsset() {
 	pendingSubmitMode.value = "create";
 }
 
+// Evita roubar atalhos quando o foco está em um campo editável.
 function isKeyboardShortcutTargetBlocked() {
 	const activeElement = document.activeElement;
 
@@ -589,6 +617,7 @@ function isKeyboardShortcutTargetBlocked() {
 	);
 }
 
+// Direciona Enter e Escape para o modal de cadastro.
 function handleModalKeydown(event) {
 	if (!isCreateModalOpen.value || props.isSubmitting) {
 		return;

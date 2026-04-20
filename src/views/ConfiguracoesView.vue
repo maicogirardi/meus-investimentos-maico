@@ -71,6 +71,7 @@ watch(
 	},
 );
 
+// Aplica a cor selecionada sem esperar o blur do campo.
 function handleThemeColorChange(event) {
 	const nextValue = event.target.value;
 	themeColorText.value = nextValue;
@@ -79,6 +80,7 @@ function handleThemeColorChange(event) {
 	}
 }
 
+// Normaliza o texto antes de persistir a cor do tema.
 function handleThemeColorTextBlur() {
 	const nextValue = themeColorText.value.trim();
 	if (/^#[0-9A-Fa-f]{6}$/.test(nextValue)) {
@@ -86,6 +88,7 @@ function handleThemeColorTextBlur() {
 	}
 }
 
+// Alterna o tema visual e delega a persistência para o pai.
 function handleThemeToggle(event) {
 	const checked = event.target.checked;
 	emit("update-theme", checked ? "dark" : "light");

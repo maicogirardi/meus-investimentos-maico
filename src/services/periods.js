@@ -1,10 +1,12 @@
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
 
+// Gera o id compacto usado para ordenar e localizar períodos.
 export function buildPeriodId(year, month) {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+// Mantém a lista de períodos sincronizada em tempo real.
 export function subscribePeriods(uid, callback) {
   const db = getFirebaseDb();
   if (!db || !uid) {
@@ -37,6 +39,7 @@ export function subscribePeriods(uid, callback) {
   });
 }
 
+// Cria ou atualiza o período base sem duplicar registros.
 export async function ensurePeriod(uid, year, month, label) {
   const db = getFirebaseDb();
   if (!db || !uid) {

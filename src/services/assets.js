@@ -25,6 +25,7 @@ function normalizeAmount(value) {
 	return Number.isFinite(normalized) ? Number(normalized.toFixed(2)) : 0;
 }
 
+// Escuta os ativos do usuário e já entrega os dados normalizados.
 export function subscribeAssets(uid, callback) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {
@@ -55,6 +56,7 @@ export function subscribeAssets(uid, callback) {
 	});
 }
 
+// Mantém o estado mensal de cada ativo sincronizado em tempo real.
 export function subscribeAssetMonthlyStates(uid, callback) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {
@@ -99,6 +101,7 @@ export function subscribeAssetMonthlyStates(uid, callback) {
 	});
 }
 
+// Observa as movimentações para compor o resumo e a Home.
 export function subscribeTransactions(uid, callback) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {
@@ -140,6 +143,7 @@ export function subscribeTransactions(uid, callback) {
 	});
 }
 
+// Cria o ativo e o primeiro snapshot mensal em uma única escrita.
 export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {
@@ -203,6 +207,7 @@ export async function createAssetWithMonthlyState(uid, assetInput, period) {
 	return assetRef.id;
 }
 
+// Atualiza o ativo sem perder o estado inicial já calculado.
 export async function updateAssetWithInitialMonthlyState(uid, assetId, assetInput) {
 	const db = getFirebaseDb();
 	if (!db || !uid || !assetId) {
@@ -265,6 +270,7 @@ export async function updateAssetWithInitialMonthlyState(uid, assetId, assetInpu
 	await batch.commit();
 }
 
+// Remove o ativo e todos os registros dependentes vinculados a ele.
 export async function deleteAssetCascade(uid, assetId) {
 	const db = getFirebaseDb();
 	if (!db || !uid || !assetId) {

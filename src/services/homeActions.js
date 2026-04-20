@@ -43,6 +43,7 @@ function normalizeActionDate(value) {
 	return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : getCurrentDateLabel();
 }
 
+// Padroniza o snapshot mensal antes de recalcular qualquer ação.
 function normalizeMonthlyState(monthlyState, asset, periodId) {
 	const initialValue = normalizeAmount(asset?.initialValue);
 	const source = monthlyState || {};
@@ -65,6 +66,7 @@ function normalizeMonthlyState(monthlyState, asset, periodId) {
 	};
 }
 
+// Usa o último estado conhecido como base para um período novo.
 function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 	const baseState = normalizeMonthlyState(referenceMonthlyState, asset, periodId);
 
@@ -86,6 +88,7 @@ function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 	};
 }
 
+// Recalcula lucro líquido e bruto a partir do estado atual.
 function buildIncomeFields(nextState) {
 	return {
 		monthNetIncome: normalizeAmount(nextState.currentLiquidBalance - nextState.currentCapitalInvested),
@@ -101,6 +104,7 @@ function isTransactionActionType(type) {
 	);
 }
 
+// Ordena leituras e transações pela data real de execução.
 function compareEntriesByDate(leftEntry, rightEntry, fieldName = "transactionDate") {
 	const dateCompare = normalizeText(leftEntry?.[fieldName]).localeCompare(normalizeText(rightEntry?.[fieldName]), "pt-BR");
 	if (dateCompare !== 0) {
@@ -116,6 +120,7 @@ function compareEntriesByDate(leftEntry, rightEntry, fieldName = "transactionDat
 	return normalizeText(leftEntry?.id).localeCompare(normalizeText(rightEntry?.id), "pt-BR", { sensitivity: "base" });
 }
 
+// Reprocessa a linha do tempo inteira para chegar ao saldo final correto.
 function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadings) {
 	let nextMonthlyState = {
 		...baseMonthlyState,
@@ -182,6 +187,7 @@ function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadin
 	};
 }
 
+// Carrega o conjunto mínimo de dados para recalcular uma transação.
 async function loadAssetPeriodContext(uid, assetId, periodId) {
 	const db = getFirebaseDb();
 	const assetRef = doc(db, "users", uid, "assets", assetId);
@@ -239,6 +245,7 @@ async function loadAssetPeriodContext(uid, assetId, periodId) {
 	};
 }
 
+// Salva a ação da Home e atualiza o snapshot mensal no mesmo batch.
 export async function saveHomeAssetAction(uid, actionInput, context) {
 	const db = getFirebaseDb();
 	if (!db || !uid) {
@@ -367,6 +374,7 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 	await batch.commit();
 }
 
+// Reescreve a transação e recompõe o estado mensal do ativo.
 export async function updateHomeTransaction(uid, transactionInput) {
 	const db = getFirebaseDb();
 	const transactionId = normalizeText(transactionInput?.id);
@@ -430,6 +438,7 @@ export async function updateHomeTransaction(uid, transactionInput) {
 	await batch.commit();
 }
 
+// Exclui a transação e refaz o cálculo mensal sem ela.
 export async function deleteHomeTransaction(uid, transactionIdInput) {
 	const db = getFirebaseDb();
 	const transactionId = normalizeText(transactionIdInput);

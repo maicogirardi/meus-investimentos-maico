@@ -11,6 +11,7 @@ createApp(App).mount("#app");
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
 	window.addEventListener("load", async () => {
 		try {
+			// Registra o worker e decide quando a atualização precisa ser imediata.
 			const baseUrl = import.meta.env.BASE_URL;
 			const serviceWorkerUrl = `${baseUrl}sw.js?v=${encodeURIComponent(__APP_BUILD_ID__)}`;
 			const startupTime = Date.now();
@@ -30,6 +31,7 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
 			});
 
 			const shouldApplyUpdateImmediately = () => Date.now() - startupTime <= startupUpdateWindowMs;
+			// Encaminha o novo worker para ativação sem esperar a próxima sessão.
 			const activateUpdate = (worker) => {
 				worker?.postMessage({ type: "SKIP_WAITING" });
 			};

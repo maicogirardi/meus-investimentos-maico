@@ -1,4 +1,5 @@
 <script setup>
+// Retorna os traços do ícone certo para cada aba.
 function getIconPaths(iconName) {
   switch (iconName) {
     case "wallet":
