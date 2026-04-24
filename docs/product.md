@@ -196,6 +196,15 @@ Colecoes que o codigo ja considera e agora tambem pode popular:
 * `users/{uid}/dailyReadings`
 * `users/{uid}/transactions`
 
+### Regras de seguranca aplicadas no Firestore
+
+As regras de desenvolvimento seguro agora seguem o padrao do `financas-app`:
+
+* acesso liberado apenas para usuario autenticado
+* isolamento estrito por `uid` dentro de `users/{uid}`
+* validacao dos schemas usados hoje em `configs/preferences`, `periods`, `assets`, `assetMonthlyStates`, `transactions` e `dailyReadings`
+* bloqueio implicito de colecoes e campos que o app nao usa hoje
+
 ### Estrutura planejada
 
 Para o MVP completo, a estrutura mais coerente continua sendo:
@@ -251,6 +260,7 @@ Firebase atual:
 * projeto: `meus-investimentos-maico`
 * app web: `investimentos-web`
 * Firestore default em `southamerica-east1`
+* `firestore.rules` deve ser publicado junto sempre que houver mudanca de schema ou liberacao de nova colecao no cliente
 
 ## 7. Divergencias conhecidas para ajustar depois
 

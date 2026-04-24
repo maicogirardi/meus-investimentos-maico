@@ -10,6 +10,7 @@ Hoje o projeto ja tem:
 * login e logout com Google
 * preferencias do usuario em `users/{uid}/configs/preferences`
 * listeners realtime para preferencias, periodos e ativos
+* regras do Firestore isolando cada usuario no proprio namespace e validando os documentos principais do app
 * criacao e exclusao de periodos
 * cadastro e exclusao de ativos
 * criacao automatica de `assetMonthlyStates` ao cadastrar um ativo
@@ -40,6 +41,15 @@ O motor completo de investimentos ainda nao esta pronto. `Home` e `Resumo` conti
 
 * GitHub Pages: `https://maicogirardi.github.io/meus-investimentos-maico/`
 * Firebase Hosting: `https://meus-investimentos-maico.web.app`
+
+## Seguranca do Firestore
+
+As regras publicadas para desenvolvimento seguro seguem o mesmo principio do `financas-app`:
+
+* somente usuarios autenticados acessam dados
+* cada usuario acessa apenas `users/{uid}` do proprio login
+* `configs/preferences`, `periods`, `assets`, `assetMonthlyStates`, `transactions` e `dailyReadings` aceitam apenas os campos esperados pelo app
+* valores sensiveis como datas, cores, tipos de transacao e numeros obrigatorios sao validados nas regras
 
 ## Configuracao local
 
