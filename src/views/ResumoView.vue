@@ -25,18 +25,6 @@ const props = defineProps({
 		type: String,
 		default: "",
 	},
-	periodLabel: {
-		type: String,
-		default: "",
-	},
-	selectedYear: {
-		type: Number,
-		default: null,
-	},
-	selectedPeriodId: {
-		type: String,
-		default: "",
-	},
 });
 
 const emit = defineEmits(["update-transaction", "delete-transaction"]);
@@ -152,40 +140,32 @@ const summaryTotalBalance = computed(() =>
 		return total + Number(latestMonthlyState?.currentCapitalInvested ?? asset.initialValue ?? 0);
 	}, 0),
 );
-const selectedPeriodLabel = computed(() => {
-	const formattedPeriodLabel = formatPeriodLabel(props.selectedPeriodId);
-
-	if (formattedPeriodLabel !== "--") {
-		return formattedPeriodLabel;
-	}
-
-	return props.periodLabel || "--";
-});
-const selectedPeriodStateMap = computed(() => {
-	const monthlyStatesByAssetId = new Map();
-
-	props.monthlyStates.forEach((monthlyState) => {
-		if (monthlyState.periodId !== props.selectedPeriodId || !monthlyState.assetId) {
-			return;
-		}
-
-		monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
-	});
-
-	return monthlyStatesByAssetId;
-});
 const assetPeriodRows = computed(() =>
-	selectedAnnualAssets.value.map((asset) => {
-		const monthlyState = selectedPeriodStateMap.value.get(asset.id) || null;
-		return {
-			id: asset.id,
-			name: asset.name,
-			color: asset.color || "#4F7CFF",
-			periodLabel: selectedPeriodLabel.value || "--",
-			netIncome: monthlyState ? monthlyState.monthNetIncome : null,
-			grossIncome: monthlyState ? monthlyState.monthGrossIncome : null,
-		};
-	}),
+	props.monthlyStates
+		.filter((monthlyState) =>
+			monthlyState.assetId && selectedAnnualAssetIds.value.includes(monthlyState.assetId),
+		)
+		.map((monthlyState) => {
+			const asset = assetMap.value.get(monthlyState.assetId);
+
+			return {
+				id: `${monthlyState.assetId}-${monthlyState.periodId}`,
+				name: asset?.name || "Ativo removido",
+				color: asset?.color || "#4F7CFF",
+				periodLabel: formatPeriodLabel(monthlyState.periodId),
+				periodId: monthlyState.periodId,
+				netIncome: monthlyState.monthNetIncome,
+				grossIncome: monthlyState.monthGrossIncome,
+			};
+		})
+		.sort((leftRow, rightRow) => {
+			const periodCompare = rightRow.periodId.localeCompare(leftRow.periodId, "pt-BR");
+			if (periodCompare !== 0) {
+				return periodCompare;
+			}
+
+			return leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" });
+		}),
 );
 const assetMap = computed(() => {
 	const entries = activeAssets.value.map((asset) => [
@@ -201,48 +181,91 @@ const assetMap = computed(() => {
 const selectedTransactions = computed(() =>
 	props.transactions.filter((transaction) => selectedAnnualAssetIds.value.includes(transaction.assetId)),
 );
+const initialAssetTransactions = computed(() =>
+	selectedAnnualAssets.value
+		.filter((asset) => Number(asset.initialValue || 0) > 0)
+		.map((asset) => ({
+			id: `asset-initial-${asset.id}`,
+			assetId: asset.id,
+			periodId: String(asset.startDate || "").slice(0, 7),
+			type: "contribution",
+			amount: Number(asset.initialValue || 0),
+			note: "Criação do ativo",
+			transactionDate: asset.startDate || "",
+			isSynthetic: true,
+		})),
+);
+const selectedLedgerTransactions = computed(() => [
+	...selectedTransactions.value,
+	...initialAssetTransactions.value,
+]);
+
+function getTransactionYear(transaction) {
+	const dateYear = getPeriodYear(String(transaction?.transactionDate || "").slice(0, 7));
+	return Number.isInteger(dateYear) ? dateYear : getPeriodYear(transaction?.periodId);
+}
+
 const annualRows = computed(() => {
-	if (!props.selectedYear || selectedAnnualAssets.value.length === 0) {
+	if (selectedAnnualAssets.value.length === 0) {
 		return [];
 	}
 
 	return selectedAnnualAssets.value
-		.map((asset) => {
-			const yearlyStates = props.monthlyStates
-				.filter((monthlyState) => monthlyState.assetId === asset.id && getPeriodYear(monthlyState.periodId) === props.selectedYear)
-				.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
-			const historicalStates = props.monthlyStates
-				.filter((monthlyState) => monthlyState.assetId === asset.id && getPeriodYear(monthlyState.periodId) <= props.selectedYear)
-				.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
-			const latestHistoricalState = historicalStates[historicalStates.length - 1] || null;
-			const yearlyTransactions = selectedTransactions.value.filter((transaction) =>
-				transaction.assetId === asset.id && getPeriodYear(transaction.periodId) === props.selectedYear,
-			);
+		.flatMap((asset) => {
+			const assetStates = props.monthlyStates.filter((monthlyState) => monthlyState.assetId === asset.id);
+			const assetTransactions = selectedLedgerTransactions.value.filter((transaction) => transaction.assetId === asset.id);
+			const years = Array.from(new Set([
+				...assetStates.map((monthlyState) => getPeriodYear(monthlyState.periodId)),
+				...assetTransactions.map((transaction) => getTransactionYear(transaction)),
+			].filter(Number.isInteger))).sort((leftYear, rightYear) => leftYear - rightYear);
+			let accumulatedBalance = 0;
 
-			return {
-				id: asset.id,
-				name: asset.name,
-				color: asset.color || "#4F7CFF",
-				label: String(props.selectedYear),
-				liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
-				totalBalance: Number(latestHistoricalState?.currentCapitalInvested ?? asset.initialValue ?? 0),
-				contribution: yearlyTransactions.reduce((total, transaction) =>
-					total + (transaction.type === "contribution" ? Number(transaction.amount || 0) : 0), 0),
-				extraWithdrawals: yearlyTransactions.reduce((total, transaction) =>
-					total + (transaction.type === "extraWithdrawal" ? Number(transaction.amount || 0) : 0), 0),
-			};
+			return years.map((year) => {
+				const yearlyStates = assetStates
+					.filter((monthlyState) => getPeriodYear(monthlyState.periodId) === year)
+					.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
+				const yearlyTransactions = assetTransactions.filter((transaction) => getTransactionYear(transaction) === year);
+				const contribution = yearlyTransactions.reduce((total, transaction) =>
+					total + (transaction.type === "contribution" ? Number(transaction.amount || 0) : 0), 0);
+				const extraWithdrawals = yearlyTransactions.reduce((total, transaction) =>
+					total + (transaction.type === "extraWithdrawal" ? Number(transaction.amount || 0) : 0), 0);
+
+				accumulatedBalance = accumulatedBalance + contribution - extraWithdrawals;
+
+				return {
+					id: `${asset.id}-${year}`,
+					assetId: asset.id,
+					name: asset.name,
+					color: asset.color || "#4F7CFF",
+					label: String(year),
+					liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
+					totalBalance: accumulatedBalance,
+					contribution,
+					extraWithdrawals,
+				};
+			}).reverse();
 		})
-		.sort((leftRow, rightRow) => leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" }));
+		.sort((leftRow, rightRow) => {
+			const yearCompare = rightRow.label.localeCompare(leftRow.label, "pt-BR");
+			if (yearCompare !== 0) {
+				return yearCompare;
+			}
+
+			return leftRow.name.localeCompare(rightRow.name, "pt-BR", { sensitivity: "base" });
+		});
 });
 const annualTotals = computed(() => ({
 	liquidBalance: annualRows.value.reduce((total, row) => total + Number(row.liquidBalance || 0), 0),
-	totalBalance: annualRows.value.reduce((total, row) => total + Number(row.totalBalance || 0), 0),
+	totalBalance: selectedAnnualAssets.value.reduce((total, asset) => {
+		const latestAssetRow = annualRows.value.find((row) => row.assetId === asset.id);
+		return total + Number(latestAssetRow?.totalBalance ?? asset.initialValue ?? 0);
+	}, 0),
 	contribution: annualRows.value.reduce((total, row) => total + Number(row.contribution || 0), 0),
 	extraWithdrawals: annualRows.value.reduce((total, row) => total + Number(row.extraWithdrawals || 0), 0),
 }));
 const withdrawalRows = computed(() =>
 	selectedTransactions.value
-		.filter((transaction) => transaction.type === "withdrawal" && transaction.periodId === props.selectedPeriodId)
+		.filter((transaction) => transaction.type === "withdrawal")
 		.map((transaction) => {
 			const asset = assetMap.value.get(transaction.assetId);
 
@@ -252,7 +275,7 @@ const withdrawalRows = computed(() =>
 				assetColor: asset?.color || "#4F7CFF",
 				type: transaction.type,
 				typeLabel: formatMovementType(transaction.type),
-				periodLabel: formatPeriodLabel(transaction.periodId),
+				periodLabel: formatPeriodLabel(String(transaction.transactionDate || "").slice(0, 7) || transaction.periodId),
 				transactionDate: transaction.transactionDate || "",
 				dateLabel: formatTransactionDate(transaction.transactionDate),
 				note: transaction.note || "--",
@@ -267,9 +290,9 @@ const periodTotals = computed(() => ({
 	withdrawals: withdrawalRows.value.reduce((total, row) => total + Number(row.amount || 0), 0),
 }));
 const movementRows = computed(() => {
-	const allowedTypes = ["contribution", "extraWithdrawal"];
+	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
 	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
-	const transactionEntries = [...selectedTransactions.value];
+	const transactionEntries = [...selectedLedgerTransactions.value];
 
 	return transactionEntries
 		.filter((transaction) => allowedTypes.includes(transaction.type) && selectedAnnualAssetIds.value.includes(transaction.assetId))
@@ -282,11 +305,12 @@ const movementRows = computed(() => {
 				assetColor: asset?.color || "#4F7CFF",
 				type: transaction.type,
 				typeLabel: formatMovementType(transaction.type),
-				periodLabel: formatPeriodLabel(transaction.periodId),
+				periodLabel: formatPeriodLabel(String(transaction.transactionDate || "").slice(0, 7) || transaction.periodId),
 				periodId: transaction.periodId,
 				transactionDate: transaction.transactionDate || "",
 				note: transaction.note || "--",
 				amount: Number(transaction.amount || 0),
+				isSynthetic: transaction.isSynthetic === true,
 			};
 		})
 		.sort((leftRow, rightRow) => compareMovementRows(leftRow, rightRow) * multiplier);
@@ -304,7 +328,6 @@ watch(
 		movementSortState.value.direction,
 		props.transactions.length,
 		activeAssets.value.length,
-		props.selectedYear,
 	],
 	() => {
 		movementPage.value = 1;
@@ -833,7 +856,7 @@ function compareMovementRows(leftRow, rightRow) {
 	}
 
 	if (movementSortState.value.key === "period") {
-		return leftRow.periodId.localeCompare(rightRow.periodId, "pt-BR");
+		return compareTransactionRows(leftRow, rightRow);
 	}
 
 	if (movementSortState.value.key === "type") {
@@ -1168,7 +1191,7 @@ function formatTransactionDate(value) {
 
 						<tbody v-else>
 							<tr>
-								<td colspan="5" class="empty-row">Nenhum saque registrado para o per&iacute;odo selecionado.</td>
+								<td colspan="5" class="empty-row">Nenhum saque registrado para os ativos selecionados.</td>
 							</tr>
 						</tbody>
 					</table>
@@ -1257,7 +1280,7 @@ function formatTransactionDate(value) {
 							<td>{{ row.note }}</td>
 							<td>{{ formatCurrency(row.amount) }}</td>
 							<td>
-								<div class="movement-actions">
+								<div v-if="!row.isSynthetic" class="movement-actions">
 									<button
 										type="button"
 										class="icon-button asset-action-button asset-action-button-edit"
@@ -1291,6 +1314,7 @@ function formatTransactionDate(value) {
 										</span>
 									</button>
 								</div>
+								<span v-else class="movement-static-note">Cadastro</span>
 							</td>
 						</tr>
 					</tbody>
@@ -1975,6 +1999,13 @@ function formatTransactionDate(value) {
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
+}
+
+.movement-static-note {
+	display: flex;
+	justify-content: flex-end;
+	color: var(--text-soft);
+	font-size: 0.86rem;
 }
 
 .asset-action-button {

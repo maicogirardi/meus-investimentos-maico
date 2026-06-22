@@ -15,6 +15,10 @@ import {
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
 import { deleteHomeTransaction, saveHomeAssetAction, updateHomeTransaction } from "./services/homeActions";
+import {
+	getInvestmentSheetMovementCount,
+	importInvestmentSheetMovements,
+} from "./services/investmentSheetImport";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -63,6 +67,7 @@ const periodModalMonth = ref(today.getMonth() + 1);
 const assetErrorMessage = ref("");
 const homeActionErrorMessage = ref("");
 const summaryActionErrorMessage = ref("");
+const sheetImportMessage = ref("");
 const deletePeriodTarget = ref(null);
 const deleteAssetTarget = ref(null);
 const shouldShowPeriodValidation = ref(false);
@@ -577,6 +582,7 @@ function clearUserState() {
 	assetErrorMessage.value = "";
 	homeActionErrorMessage.value = "";
 	summaryActionErrorMessage.value = "";
+	sheetImportMessage.value = "";
 	applyTheme();
 }
 
@@ -809,7 +815,16 @@ async function handleCreateAsset(assetInput) {
 
 // Envia a ação da Home com o contexto do ativo e do período.
 async function handleHomeAssetAction(actionInput) {
-	if (!currentUser.value || !selectedPeriodId.value) {
+	if (!currentUser.value) {
+		return;
+	}
+
+	const actionDate = String(actionInput?.date || "").trim();
+	const actionPeriodId = /^\d{4}-\d{2}-\d{2}$/.test(actionDate)
+		? actionDate.slice(0, 7)
+		: selectedPeriodId.value;
+
+	if (!actionPeriodId) {
 		return;
 	}
 
@@ -822,22 +837,32 @@ async function handleHomeAssetAction(actionInput) {
 	const assetStates = assetMonthlyStates.value
 		.filter((monthlyState) => monthlyState.assetId === asset.id)
 		.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
-	const currentMonthlyState = assetStates.find((monthlyState) => monthlyState.periodId === selectedPeriodId.value) || null;
+	const currentMonthlyState = assetStates.find((monthlyState) => monthlyState.periodId === actionPeriodId) || null;
 	const referenceMonthlyState = currentMonthlyState
 		|| [...assetStates]
 			.reverse()
-			.find((monthlyState) => monthlyState.periodId < selectedPeriodId.value)
+			.find((monthlyState) => monthlyState.periodId < actionPeriodId)
 		|| null;
 
 	homeActionErrorMessage.value = "";
 	status.value = "loading";
 
 	try {
+		const [actionYear, actionMonth] = actionPeriodId.split("-").map(Number);
+		if (!periodExists(actionYear, actionMonth)) {
+			await ensurePeriod(
+				currentUser.value.uid,
+				actionYear,
+				actionMonth,
+				buildMonthLabel(actionYear, actionMonth),
+			);
+		}
+
 		await saveHomeAssetAction(
 			currentUser.value.uid,
 			{
 				...actionInput,
-				periodId: selectedPeriodId.value,
+				periodId: actionPeriodId,
 			},
 			{
 				asset,
@@ -901,6 +926,35 @@ async function handleDeleteTransaction(transactionId) {
 		await deleteHomeTransaction(currentUser.value.uid, transactionId);
 	} catch {
 		summaryActionErrorMessage.value = "Não foi possível excluir esta movimentação agora.";
+	} finally {
+		status.value = "idle";
+	}
+}
+
+// Importa somente as movimentações confirmadas da aba REAL.
+async function handleImportInvestmentSheet() {
+	if (!currentUser.value) {
+		return;
+	}
+
+	const targetAsset = assets.value.find((asset) => {
+		const name = String(asset.name || "").trim().toLowerCase();
+		return name.includes("cdb") && name.includes("itaú") && name.includes("100% cdi");
+	});
+
+	if (!targetAsset) {
+		sheetImportMessage.value = "Não encontrei o ativo CDB Itaú 100% CDI cadastrado.";
+		return;
+	}
+
+	status.value = "loading";
+	sheetImportMessage.value = "";
+
+	try {
+		const result = await importInvestmentSheetMovements(currentUser.value.uid, targetAsset);
+		sheetImportMessage.value = `${result.transactionCount} movimentações e ${result.monthlyStateCount} meses importados/atualizados no ativo ${targetAsset.name}.`;
+	} catch {
+		sheetImportMessage.value = "Não foi possível importar as movimentações agora.";
 	} finally {
 		status.value = "idle";
 	}
@@ -1060,11 +1114,14 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
+				:sheet-import-count="getInvestmentSheetMovementCount()"
+				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
 				@install-app="handleInstallApp"
+				@import-investment-sheet="handleImportInvestmentSheet"
 			/>
 
 			<div v-else-if="!isDataReady" class="page-section status-card">
@@ -1096,11 +1153,8 @@ onBeforeUnmount(() => {
 				:assets="assets"
 				:monthly-states="assetMonthlyStates"
 				:transactions="transactions"
-				:period-label="periodLabel"
 				:is-submitting="isSubmitting"
 				:error-message="summaryActionErrorMessage"
-				:selected-year="selectedYear"
-				:selected-period-id="selectedPeriodId"
 				@update-transaction="handleUpdateTransaction"
 				@delete-transaction="handleDeleteTransaction"
 			/>
@@ -1130,11 +1184,14 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
+				:sheet-import-count="getInvestmentSheetMovementCount()"
+				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
 				@install-app="handleInstallApp"
+				@import-investment-sheet="handleImportInvestmentSheet"
 			/>
 
 			<BottomTabs

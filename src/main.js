@@ -5,6 +5,15 @@ import "./style.css";
 import App from "./App.vue";
 import { initializeFirebaseApp } from "./services/firebase";
 
+window.addEventListener("unhandledrejection", (event) => {
+	const reason = event.reason;
+	const message = String(reason?.message || reason || "");
+
+	if (reason?.name === "AbortError" && message.includes("The user aborted a request")) {
+		event.preventDefault();
+	}
+});
+
 initializeFirebaseApp();
 createApp(App).mount("#app");
 
