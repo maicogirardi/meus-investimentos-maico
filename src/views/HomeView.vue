@@ -1109,7 +1109,12 @@ onBeforeUnmount(() => {
 							@input="handleCurrencyInput($event, 'liquidBalance')"
 							@blur="handleCurrencyBlur('liquidBalance')"
 						/>
-						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um saldo atual no banco maior que zero.</div>
+						<div
+							class="error-text error-text-reserved"
+							:class="{ 'is-hidden': !isLiquidBalanceMissing }"
+						>
+							{{ isLiquidBalanceMissing ? "Informe um saldo atual no banco maior que zero." : " " }}
+						</div>
 					</div>
 
 					<div v-if="isUpdateAction" class="field-group">
@@ -1126,7 +1131,12 @@ onBeforeUnmount(() => {
 							@input="handleCurrencyInput($event, 'grossBalance')"
 							@blur="handleCurrencyBlur('grossBalance')"
 						/>
-						<div v-if="isGrossBalanceMissing" class="error-text">Informe um rendimento bruto maior que zero.</div>
+						<div
+							class="error-text error-text-reserved"
+							:class="{ 'is-hidden': !isGrossBalanceMissing }"
+						>
+							{{ isGrossBalanceMissing ? "Informe um rendimento bruto maior que zero." : " " }}
+						</div>
 					</div>
 
 					<div v-if="shouldShowNoteField" class="field-group field-group-full">
@@ -1854,6 +1864,8 @@ onBeforeUnmount(() => {
 .summary-field,
 .field-group {
 	display: grid;
+	align-content: start;
+	align-items: start;
 	gap: 8px;
 }
 
@@ -1883,7 +1895,7 @@ onBeforeUnmount(() => {
 
 .text-input {
 	width: 100%;
-	min-height: 48px;
+	height: 54px;
 	padding: 12px 14px;
 	border: 1px solid var(--glass-border-strong);
 	border-radius: 16px;
