@@ -257,7 +257,7 @@ service cloud.firestore {
 			&& request.resource.data.assetId is string
 			&& request.resource.data.assetId.size() > 0
 			&& validPeriodId(request.resource.data.periodId)
-			&& validPositiveAmount(request.resource.data.liquidIncome)
+			&& validAmount(request.resource.data.liquidIncome)
 			&& validPositiveAmount(request.resource.data.grossIncome)
 			&& validPositiveAmount(request.resource.data.liquidBalance)
 			&& validPositiveAmount(request.resource.data.grossBalance)

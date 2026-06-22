@@ -36,7 +36,7 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 const actionConfigMap = Object.freeze({
 	update: {
 		title: "Atualizar ativo",
-		description: "Informe os rendimentos do período da data escolhida.",
+		description: "Informe o saldo atual no banco e o rendimento bruto do período da data escolhida.",
 		confirmLabel: "Salvar",
 		noteLabel: "",
 		notePlaceholder: "",
@@ -90,7 +90,7 @@ const selectedPeriodStateMap = computed(() => {
 		if (!currentMonthlyState || shouldPreferReading || shouldPreferPeriod) {
 			monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
 		}
-	});
+		});
 
 	return monthlyStatesByAssetId;
 });
@@ -227,8 +227,8 @@ function getAssetReadingDate(asset) {
 	return formatFullDate(getAssetMonthlyState(asset?.id)?.lastReadingDate);
 }
 
-function getAssetNetIncome(asset) {
-	return Number(getAssetMonthlyState(asset?.id)?.monthNetIncome ?? 0);
+function getAssetGrossIncome(asset) {
+	return Number(getAssetMonthlyState(asset?.id)?.monthGrossIncome ?? 0);
 }
 
 function getAssetLiquidBalance(asset) {
@@ -254,18 +254,15 @@ function getAssetDailyIncome(asset) {
 			}
 
 			return String(leftReading.id || "").localeCompare(String(rightReading.id || ""), "pt-BR", { sensitivity: "base" });
-		});
+	});
 	const currentReadingIndex = assetReadings.findIndex((dailyReading) => dailyReading.readingDate === readingDate);
 	const currentReading = currentReadingIndex >= 0 ? assetReadings[currentReadingIndex] : null;
-	const previousReading = currentReadingIndex > 0 ? assetReadings[currentReadingIndex - 1] : null;
 
 	if (!currentReading) {
 		return currentLiquidIncome;
 	}
 
-	return previousReading
-		? currentLiquidIncome - Number(previousReading.liquidIncome || 0)
-		: currentLiquidIncome;
+	return Number(currentReading.liquidIncome ?? currentLiquidIncome);
 }
 
 function formatOptionalCurrency(value) {
@@ -890,22 +887,6 @@ onBeforeUnmount(() => {
 					<div class="home-metrics-grid">
 						<article class="metric-card">
 							<div class="metric-card-header">
-								<span>Total investido</span>
-								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
-							</div>
-							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
-						</article>
-
-						<article class="metric-card">
-							<div class="metric-card-header">
-								<span>Rendimento</span>
-								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
-							</div>
-							<strong>{{ formatCurrency(getAssetNetIncome(asset)) }}</strong>
-						</article>
-
-						<article class="metric-card">
-							<div class="metric-card-header">
 								<span>Saldo atual no banco</span>
 								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
 							</div>
@@ -914,17 +895,31 @@ onBeforeUnmount(() => {
 
 						<article class="metric-card">
 							<div class="metric-card-header">
+								<span>Total investido</span>
+							</div>
+							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
+						</article>
+
+						<article class="metric-card metric-card-accent">
+							<div class="metric-card-header">
 								<span>Rendimento líquido diário</span>
 								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
 							</div>
 							<strong>{{ formatOptionalCurrency(getAssetDailyIncome(asset)) }}</strong>
+						</article>
+
+						<article class="metric-card">
+							<div class="metric-card-header">
+								<span>Rendimento bruto</span>
+							</div>
+							<strong>{{ formatCurrency(getAssetGrossIncome(asset)) }}</strong>
 						</article>
 					</div>
 
 					<div class="asset-actions">
 						<button
 							type="button"
-							class="action-button action-button-primary"
+							class="action-button action-button-secondary"
 							aria-label="Atualizar"
 							title="Atualizar"
 							:disabled="isSubmitting"
@@ -1101,7 +1096,7 @@ onBeforeUnmount(() => {
 					</div>
 
 					<div v-if="isUpdateAction" class="field-group">
-						<label class="field-label" for="home-liquid-balance">Rendimento líquido</label>
+						<label class="field-label" for="home-liquid-balance">Saldo atual no banco</label>
 						<input
 							id="home-liquid-balance"
 							:value="liquidBalanceInput"
@@ -1114,7 +1109,7 @@ onBeforeUnmount(() => {
 							@input="handleCurrencyInput($event, 'liquidBalance')"
 							@blur="handleCurrencyBlur('liquidBalance')"
 						/>
-						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um rendimento líquido maior que zero.</div>
+						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um saldo atual no banco maior que zero.</div>
 					</div>
 
 					<div v-if="isUpdateAction" class="field-group">
@@ -1775,6 +1770,19 @@ onBeforeUnmount(() => {
 .metric-card {
 	background: rgba(255, 255, 255, 0.02);
 	border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.metric-card-accent {
+	border-color: color-mix(in srgb, var(--asset-color) 36%, rgba(255, 255, 255, 0.04));
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--asset-color) 12%, transparent) 0%, rgba(255, 255, 255, 0) 100%),
+		color-mix(in srgb, var(--asset-color) 8%, rgba(255, 255, 255, 0.02));
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--asset-color) 10%, rgba(255, 255, 255, 0.04));
+}
+
+.metric-card-accent span,
+.metric-card-accent strong {
+	color: var(--text-h);
 }
 
 .empty-card {
