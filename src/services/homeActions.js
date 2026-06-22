@@ -79,8 +79,8 @@ function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 		currentLiquidBalance: baseState.currentLiquidBalance,
 		openingGrossBalance: baseState.currentGrossBalance,
 		currentGrossBalance: baseState.currentGrossBalance,
-		monthNetIncome: 0,
-		monthGrossIncome: 0,
+		monthNetIncome: baseState.monthNetIncome,
+		monthGrossIncome: baseState.monthGrossIncome,
 		monthContributions: 0,
 		monthNormalWithdrawals: 0,
 		monthExtraWithdrawals: 0,
@@ -88,11 +88,26 @@ function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 	};
 }
 
-// Recalcula lucro líquido e bruto a partir do estado atual.
-function buildIncomeFields(nextState) {
+// Aplica a leitura de rendimento sem transformar saques em rendimento negativo.
+function applyIncomeReading(monthlyState, liquidIncome, grossIncome, readingDate) {
+	const normalizedLiquidIncome = normalizeAmount(liquidIncome);
+	const normalizedGrossIncome = normalizeAmount(grossIncome);
+	const normalLiquidWithdrawalOffset = normalizeAmount(Math.max(
+		0,
+		monthlyState.currentCapitalInvested + monthlyState.monthNetIncome - monthlyState.currentLiquidBalance,
+	));
+	const normalGrossWithdrawalOffset = normalizeAmount(Math.max(
+		0,
+		monthlyState.currentCapitalInvested + monthlyState.monthGrossIncome - monthlyState.currentGrossBalance,
+	));
+
 	return {
-		monthNetIncome: normalizeAmount(nextState.currentLiquidBalance - nextState.currentCapitalInvested),
-		monthGrossIncome: normalizeAmount(nextState.currentGrossBalance - nextState.currentCapitalInvested),
+		...monthlyState,
+		currentLiquidBalance: normalizeAmount(Math.max(0, monthlyState.currentCapitalInvested - normalLiquidWithdrawalOffset + normalizedLiquidIncome)),
+		currentGrossBalance: normalizeAmount(Math.max(0, monthlyState.currentCapitalInvested - normalGrossWithdrawalOffset + normalizedGrossIncome)),
+		monthNetIncome: normalizedLiquidIncome,
+		monthGrossIncome: normalizedGrossIncome,
+		lastReadingDate: normalizeActionDate(readingDate),
 	};
 }
 
@@ -148,9 +163,12 @@ function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadin
 
 	timelineEntries.forEach((entry) => {
 		if (entry.entryType === actionKinds.update) {
-			nextMonthlyState.currentLiquidBalance = normalizeAmount(entry.liquidBalance);
-			nextMonthlyState.currentGrossBalance = normalizeAmount(entry.grossBalance);
-			nextMonthlyState.lastReadingDate = normalizeActionDate(entry.readingDate || entry.actionDate);
+			nextMonthlyState = applyIncomeReading(
+				nextMonthlyState,
+				entry.liquidIncome ?? entry.liquidBalance,
+				entry.grossIncome ?? entry.grossBalance,
+				entry.readingDate || entry.actionDate,
+			);
 			return;
 		}
 
@@ -181,10 +199,7 @@ function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadin
 		}
 	});
 
-	return {
-		...nextMonthlyState,
-		...buildIncomeFields(nextMonthlyState),
-	};
+	return nextMonthlyState;
 }
 
 // Carrega o conjunto mínimo de dados para recalcular uma transação.
@@ -274,31 +289,23 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 	};
 
 	if (type === actionKinds.update) {
-		const liquidBalance = normalizeAmount(actionInput?.liquidBalance);
-		const grossBalance = normalizeAmount(actionInput?.grossBalance);
+		const liquidIncome = normalizeAmount(actionInput?.liquidBalance);
+		const grossIncome = normalizeAmount(actionInput?.grossBalance);
 
-		if (liquidBalance <= 0 || grossBalance <= 0) {
+		if (liquidIncome <= 0 || grossIncome <= 0) {
 			throw new Error("Leitura diária inválida.");
 		}
 
-		nextMonthlyState = {
-			...nextMonthlyState,
-			currentLiquidBalance: liquidBalance,
-			currentGrossBalance: grossBalance,
-			lastReadingDate: actionDate,
-			...buildIncomeFields({
-				...nextMonthlyState,
-				currentLiquidBalance: liquidBalance,
-				currentGrossBalance: grossBalance,
-			}),
-		};
+		nextMonthlyState = applyIncomeReading(nextMonthlyState, liquidIncome, grossIncome, actionDate);
 
 		const dailyReadingRef = doc(collection(db, "users", uid, "dailyReadings"));
 		batch.set(dailyReadingRef, {
 			assetId,
 			periodId,
-			liquidBalance,
-			grossBalance,
+			liquidIncome,
+			grossIncome,
+			liquidBalance: nextMonthlyState.currentLiquidBalance,
+			grossBalance: nextMonthlyState.currentGrossBalance,
 			readingDate: actionDate,
 			source: "home",
 			createdAt: timestamp,
@@ -341,11 +348,6 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 				monthExtraWithdrawals: normalizeAmount(nextMonthlyState.monthExtraWithdrawals + amount),
 			};
 		}
-
-		nextMonthlyState = {
-			...nextMonthlyState,
-			...buildIncomeFields(nextMonthlyState),
-		};
 
 		const transactionRef = doc(collection(db, "users", uid, "transactions"));
 		batch.set(transactionRef, {

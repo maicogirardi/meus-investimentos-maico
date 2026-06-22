@@ -9,7 +9,10 @@ window.addEventListener("unhandledrejection", (event) => {
 	const reason = event.reason;
 	const message = String(reason?.message || reason || "");
 
-	if (reason?.name === "AbortError" && message.includes("The user aborted a request")) {
+	if (
+		(reason?.name === "AbortError" && message.includes("The user aborted a request")) ||
+		message.includes("A listener indicated an asynchronous response by returning true")
+	) {
 		event.preventDefault();
 	}
 });

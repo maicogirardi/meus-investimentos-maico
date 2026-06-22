@@ -233,6 +233,8 @@ service cloud.firestore {
 			return request.resource.data.keys().hasOnly([
 				'assetId',
 				'periodId',
+				'liquidIncome',
+				'grossIncome',
 				'liquidBalance',
 				'grossBalance',
 				'readingDate',
@@ -243,6 +245,8 @@ service cloud.firestore {
 			&& request.resource.data.keys().hasAll([
 				'assetId',
 				'periodId',
+				'liquidIncome',
+				'grossIncome',
 				'liquidBalance',
 				'grossBalance',
 				'readingDate',
@@ -253,6 +257,8 @@ service cloud.firestore {
 			&& request.resource.data.assetId is string
 			&& request.resource.data.assetId.size() > 0
 			&& validPeriodId(request.resource.data.periodId)
+			&& validPositiveAmount(request.resource.data.liquidIncome)
+			&& validPositiveAmount(request.resource.data.grossIncome)
 			&& validPositiveAmount(request.resource.data.liquidBalance)
 			&& validPositiveAmount(request.resource.data.grossBalance)
 			&& validDateLabel(request.resource.data.readingDate)

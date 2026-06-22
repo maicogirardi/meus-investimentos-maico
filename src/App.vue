@@ -11,13 +11,14 @@ import {
 	deleteAssetCascade,
 	subscribeAssetMonthlyStates,
 	subscribeAssets,
+	subscribeDailyReadings,
 	subscribeTransactions,
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
 import { deleteHomeTransaction, saveHomeAssetAction, updateHomeTransaction } from "./services/homeActions";
 import {
-	getInvestmentSheetMovementCount,
-	importInvestmentSheetMovements,
+	getInvestmentSheetReadingCount,
+	importInvestmentSheetReadings,
 } from "./services/investmentSheetImport";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
@@ -52,6 +53,7 @@ const hasLoadedUiPreferences = ref(false);
 const hasLoadedPeriods = ref(false);
 const hasLoadedAssets = ref(false);
 const hasLoadedMonthlyStates = ref(false);
+const hasLoadedDailyReadings = ref(false);
 const hasLoadedTransactions = ref(false);
 const preferredPeriod = ref({ year: null, month: null });
 const selectedYear = ref(null);
@@ -59,6 +61,7 @@ const selectedMonth = ref(null);
 const periods = ref([]);
 const assets = ref([]);
 const assetMonthlyStates = ref([]);
+const dailyReadings = ref([]);
 const transactions = ref([]);
 const isPeriodModalOpen = ref(false);
 const isDeletePeriodModalOpen = ref(false);
@@ -77,6 +80,7 @@ let unsubscribePreferences = null;
 let unsubscribePeriods = null;
 let unsubscribeAssets = null;
 let unsubscribeAssetMonthlyStates = null;
+let unsubscribeDailyReadings = null;
 let unsubscribeTransactions = null;
 let triggerAppUpdate = null;
 let deferredInstallPrompt = null;
@@ -417,6 +421,15 @@ function listenAssetMonthlyStates(uid) {
 	});
 }
 
+function listenDailyReadings(uid) {
+	hasLoadedDailyReadings.value = false;
+	unsubscribeDailyReadings?.();
+	unsubscribeDailyReadings = subscribeDailyReadings(uid, (nextDailyReadings) => {
+		dailyReadings.value = nextDailyReadings;
+		hasLoadedDailyReadings.value = true;
+	});
+}
+
 // Escuta movimentações para refletir alterações imediatamente.
 function listenTransactions(uid) {
 	hasLoadedTransactions.value = false;
@@ -559,15 +572,18 @@ function clearUserState() {
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
 	unsubscribeAssetMonthlyStates?.();
+	unsubscribeDailyReadings?.();
 	unsubscribeTransactions?.();
 	periods.value = [];
 	assets.value = [];
 	assetMonthlyStates.value = [];
+	dailyReadings.value = [];
 	transactions.value = [];
 	hasLoadedUiPreferences.value = false;
 	hasLoadedPeriods.value = false;
 	hasLoadedAssets.value = false;
 	hasLoadedMonthlyStates.value = false;
+	hasLoadedDailyReadings.value = false;
 	hasLoadedTransactions.value = false;
 	preferredPeriod.value = { year: null, month: null };
 	userPreferences.value = { darkMode: true, themeColor: "#4f7cff" };
@@ -931,7 +947,7 @@ async function handleDeleteTransaction(transactionId) {
 	}
 }
 
-// Importa somente as movimentações confirmadas da aba REAL.
+// Limpa e reimporta os rendimentos da nova planilha.
 async function handleImportInvestmentSheet() {
 	if (!currentUser.value) {
 		return;
@@ -951,10 +967,11 @@ async function handleImportInvestmentSheet() {
 	sheetImportMessage.value = "";
 
 	try {
-		const result = await importInvestmentSheetMovements(currentUser.value.uid, targetAsset);
-		sheetImportMessage.value = `${result.transactionCount} movimentações e ${result.monthlyStateCount} meses importados/atualizados no ativo ${targetAsset.name}.`;
-	} catch {
-		sheetImportMessage.value = "Não foi possível importar as movimentações agora.";
+		const result = await importInvestmentSheetReadings(currentUser.value.uid, targetAsset);
+		sheetImportMessage.value = `${result.readingCount} rendimentos e ${result.withdrawalCount} saques importados para ${targetAsset.name}.`;
+	} catch (error) {
+		console.error("Falha ao importar rendimentos da planilha", error);
+		sheetImportMessage.value = "Não foi possível importar os rendimentos agora.";
 	} finally {
 		status.value = "idle";
 	}
@@ -1040,6 +1057,7 @@ onMounted(() => {
 			listenPeriods(user.uid);
 			listenAssets(user.uid);
 			listenAssetMonthlyStates(user.uid);
+			listenDailyReadings(user.uid);
 			listenTransactions(user.uid);
 			return;
 		}
@@ -1073,6 +1091,7 @@ onBeforeUnmount(() => {
 	unsubscribePeriods?.();
 	unsubscribeAssets?.();
 	unsubscribeAssetMonthlyStates?.();
+	unsubscribeDailyReadings?.();
 	unsubscribeTransactions?.();
 });
 </script>
@@ -1114,7 +1133,7 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
-				:sheet-import-count="getInvestmentSheetMovementCount()"
+				:sheet-import-count="getInvestmentSheetReadingCount()"
 				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
@@ -1130,21 +1149,11 @@ onBeforeUnmount(() => {
 
 			<HomeView
 				v-else-if="currentPage === 'home'"
-				:year-options="yearOptions"
-				:month-options="availableMonths"
-				:selected-year="selectedYear"
-				:selected-month="selectedMonth"
-				:period-label="periodLabel"
-				:has-selected-period="Boolean(periodLabel)"
 				:is-submitting="isSubmitting"
 				:error-message="homeActionErrorMessage"
 				:assets="assets"
 				:monthly-states="assetMonthlyStates"
-				:selected-period-id="selectedPeriodId"
-				@update:year="selectedYear = $event"
-				@update:month="selectedMonth = $event"
-				@add-month="openPeriodModal"
-				@delete-month="openDeletePeriodModal"
+				:daily-readings="dailyReadings"
 				@submit-action="handleHomeAssetAction"
 			/>
 
@@ -1184,7 +1193,7 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
-				:sheet-import-count="getInvestmentSheetMovementCount()"
+				:sheet-import-count="getInvestmentSheetReadingCount()"
 				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"

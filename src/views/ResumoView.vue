@@ -88,6 +88,9 @@ const calculatorPreviewText = computed(() => {
 const activeAssets = computed(() => props.assets.filter((asset) => asset.isActive !== false));
 const selectedAnnualAssetIds = ref([]);
 const movementSortState = ref(getDefaultMovementSort());
+const netIncomePage = ref(1);
+const grossIncomePage = ref(1);
+const withdrawalsPage = ref(1);
 const movementPage = ref(1);
 
 watch(
@@ -137,13 +140,15 @@ const latestMonthlyStateMap = computed(() => {
 const summaryTotalBalance = computed(() =>
 	selectedAnnualAssets.value.reduce((total, asset) => {
 		const latestMonthlyState = latestMonthlyStateMap.value.get(asset.id) || null;
-		return total + Number(latestMonthlyState?.currentCapitalInvested ?? asset.initialValue ?? 0);
+		return total + Number(latestMonthlyState?.currentLiquidBalance ?? asset.initialValue ?? 0);
 	}, 0),
 );
 const assetPeriodRows = computed(() =>
 	props.monthlyStates
 		.filter((monthlyState) =>
-			monthlyState.assetId && selectedAnnualAssetIds.value.includes(monthlyState.assetId),
+			monthlyState.assetId
+			&& selectedAnnualAssetIds.value.includes(monthlyState.assetId)
+			&& (monthlyState.lastReadingDate || Number(monthlyState.monthNetIncome || 0) !== 0 || Number(monthlyState.monthGrossIncome || 0) !== 0),
 		)
 		.map((monthlyState) => {
 			const asset = assetMap.value.get(monthlyState.assetId);
@@ -229,8 +234,14 @@ const annualRows = computed(() => {
 					total + (transaction.type === "contribution" ? Number(transaction.amount || 0) : 0), 0);
 				const extraWithdrawals = yearlyTransactions.reduce((total, transaction) =>
 					total + (transaction.type === "extraWithdrawal" ? Number(transaction.amount || 0) : 0), 0);
+				const normalWithdrawals = yearlyTransactions.reduce((total, transaction) =>
+					total + (transaction.type === "withdrawal" ? Number(transaction.amount || 0) : 0), 0);
+				const netIncome = yearlyStates.reduce((total, monthlyState) =>
+					total + Number(monthlyState.monthNetIncome || 0), 0);
 
 				accumulatedBalance = accumulatedBalance + contribution - extraWithdrawals;
+
+				const latestYearlyState = yearlyStates.at(-1) || null;
 
 				return {
 					id: `${asset.id}-${year}`,
@@ -238,8 +249,8 @@ const annualRows = computed(() => {
 					name: asset.name,
 					color: asset.color || "#4F7CFF",
 					label: String(year),
-					liquidBalance: yearlyStates.reduce((total, monthlyState) => total + Number(monthlyState.monthNetIncome || 0), 0),
-					totalBalance: accumulatedBalance,
+					liquidBalance: netIncome - normalWithdrawals,
+					totalBalance: Number(latestYearlyState?.currentLiquidBalance ?? accumulatedBalance),
 					contribution,
 					extraWithdrawals,
 				};
@@ -289,8 +300,14 @@ const periodTotals = computed(() => ({
 	grossIncome: assetPeriodRows.value.reduce((total, row) => total + Number(row.grossIncome || 0), 0),
 	withdrawals: withdrawalRows.value.reduce((total, row) => total + Number(row.amount || 0), 0),
 }));
+const netIncomePageCount = computed(() => Math.max(1, Math.ceil(assetPeriodRows.value.length / MOVEMENTS_PER_PAGE)));
+const grossIncomePageCount = computed(() => Math.max(1, Math.ceil(assetPeriodRows.value.length / MOVEMENTS_PER_PAGE)));
+const withdrawalsPageCount = computed(() => Math.max(1, Math.ceil(withdrawalRows.value.length / MOVEMENTS_PER_PAGE)));
+const paginatedNetIncomeRows = computed(() => getPaginatedRows(assetPeriodRows.value, netIncomePage.value));
+const paginatedGrossIncomeRows = computed(() => getPaginatedRows(assetPeriodRows.value, grossIncomePage.value));
+const paginatedWithdrawalRows = computed(() => getPaginatedRows(withdrawalRows.value, withdrawalsPage.value));
 const movementRows = computed(() => {
-	const allowedTypes = ["contribution", "withdrawal", "extraWithdrawal"];
+	const allowedTypes = ["contribution", "extraWithdrawal"];
 	const multiplier = movementSortState.value.direction === "asc" ? 1 : -1;
 	const transactionEntries = [...selectedLedgerTransactions.value];
 
@@ -321,6 +338,11 @@ const paginatedMovementRows = computed(() => {
 	return movementRows.value.slice(startIndex, startIndex + MOVEMENTS_PER_PAGE);
 });
 
+function getPaginatedRows(rows, page) {
+	const startIndex = (page - 1) * MOVEMENTS_PER_PAGE;
+	return rows.slice(startIndex, startIndex + MOVEMENTS_PER_PAGE);
+}
+
 watch(
 	() => [
 		selectedAnnualAssetIds.value.join("|"),
@@ -330,6 +352,9 @@ watch(
 		activeAssets.value.length,
 	],
 	() => {
+		netIncomePage.value = 1;
+		grossIncomePage.value = 1;
+		withdrawalsPage.value = 1;
 		movementPage.value = 1;
 	},
 );
@@ -358,6 +383,36 @@ watch(
 			pendingTransactionAction.value = "";
 		}
 	},
+);
+
+watch(
+	netIncomePageCount,
+	(nextPageCount) => {
+		if (netIncomePage.value > nextPageCount) {
+			netIncomePage.value = nextPageCount;
+		}
+	},
+	{ immediate: true },
+);
+
+watch(
+	grossIncomePageCount,
+	(nextPageCount) => {
+		if (grossIncomePage.value > nextPageCount) {
+			grossIncomePage.value = nextPageCount;
+		}
+	},
+	{ immediate: true },
+);
+
+watch(
+	withdrawalsPageCount,
+	(nextPageCount) => {
+		if (withdrawalsPage.value > nextPageCount) {
+			withdrawalsPage.value = nextPageCount;
+		}
+	},
+	{ immediate: true },
 );
 
 watch(
@@ -419,6 +474,26 @@ function getMovementSortDirection(sortKey) {
 }
 
 // Navega entre páginas sem sair do intervalo válido.
+function goToPage(pageRef, pageCount, nextPage) {
+	if (nextPage < 1 || nextPage > pageCount) {
+		return;
+	}
+
+	pageRef.value = nextPage;
+}
+
+function goToNetIncomePage(nextPage) {
+	goToPage(netIncomePage, netIncomePageCount.value, nextPage);
+}
+
+function goToGrossIncomePage(nextPage) {
+	goToPage(grossIncomePage, grossIncomePageCount.value, nextPage);
+}
+
+function goToWithdrawalsPage(nextPage) {
+	goToPage(withdrawalsPage, withdrawalsPageCount.value, nextPage);
+}
+
 function goToMovementPage(nextPage) {
 	if (nextPage < 1 || nextPage > movementPageCount.value) {
 		return;
@@ -1051,7 +1126,7 @@ function formatTransactionDate(value) {
 						</thead>
 
 						<tbody v-if="assetPeriodRows.length > 0">
-							<tr v-for="row in assetPeriodRows" :key="`net-${row.id}`">
+							<tr v-for="row in paginatedNetIncomeRows" :key="`net-${row.id}`">
 								<td>
 									<div class="asset-cell">
 										<span class="asset-dot" :style="{ '--asset-color': row.color }" />
@@ -1074,6 +1149,34 @@ function formatTransactionDate(value) {
 						</tbody>
 					</table>
 				</div>
+
+				<footer v-if="assetPeriodRows.length > 0" class="pagination-bar" aria-label="Paginação de rendimento líquido">
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="netIncomePage === 1"
+						aria-label="Página anterior"
+						@click="goToNetIncomePage(netIncomePage - 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m15 6-6 6 6 6" />
+						</svg>
+					</button>
+
+					<span class="pagination-indicator">{{ netIncomePage }} / {{ netIncomePageCount }}</span>
+
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="netIncomePage === netIncomePageCount"
+						aria-label="Próxima página"
+						@click="goToNetIncomePage(netIncomePage + 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m9 6 6 6-6 6" />
+						</svg>
+					</button>
+				</footer>
 			</section>
 
 			<section class="summary-table-card">
@@ -1092,7 +1195,7 @@ function formatTransactionDate(value) {
 						</thead>
 
 						<tbody v-if="assetPeriodRows.length > 0">
-							<tr v-for="row in assetPeriodRows" :key="`gross-${row.id}`">
+							<tr v-for="row in paginatedGrossIncomeRows" :key="`gross-${row.id}`">
 								<td>
 									<div class="asset-cell">
 										<span class="asset-dot" :style="{ '--asset-color': row.color }" />
@@ -1115,6 +1218,34 @@ function formatTransactionDate(value) {
 						</tbody>
 					</table>
 				</div>
+
+				<footer v-if="assetPeriodRows.length > 0" class="pagination-bar" aria-label="Paginação de rendimento bruto">
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="grossIncomePage === 1"
+						aria-label="Página anterior"
+						@click="goToGrossIncomePage(grossIncomePage - 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m15 6-6 6 6 6" />
+						</svg>
+					</button>
+
+					<span class="pagination-indicator">{{ grossIncomePage }} / {{ grossIncomePageCount }}</span>
+
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="grossIncomePage === grossIncomePageCount"
+						aria-label="Próxima página"
+						@click="goToGrossIncomePage(grossIncomePage + 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m9 6 6 6-6 6" />
+						</svg>
+					</button>
+				</footer>
 			</section>
 
 			<section class="summary-table-card summary-table-card-wide">
@@ -1135,7 +1266,7 @@ function formatTransactionDate(value) {
 						</thead>
 
 						<tbody v-if="withdrawalRows.length > 0">
-							<tr v-for="row in withdrawalRows" :key="`withdrawal-${row.id}`">
+							<tr v-for="row in paginatedWithdrawalRows" :key="`withdrawal-${row.id}`">
 								<td>
 									<div class="asset-cell">
 										<span class="asset-dot" :style="{ '--asset-color': row.assetColor }" />
@@ -1196,12 +1327,40 @@ function formatTransactionDate(value) {
 						</tbody>
 					</table>
 				</div>
+
+				<footer v-if="withdrawalRows.length > 0" class="pagination-bar" aria-label="Paginação de saques">
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="withdrawalsPage === 1"
+						aria-label="Página anterior"
+						@click="goToWithdrawalsPage(withdrawalsPage - 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m15 6-6 6 6 6" />
+						</svg>
+					</button>
+
+					<span class="pagination-indicator">{{ withdrawalsPage }} / {{ withdrawalsPageCount }}</span>
+
+					<button
+						type="button"
+						class="pagination-button"
+						:disabled="withdrawalsPage === withdrawalsPageCount"
+						aria-label="Próxima página"
+						@click="goToWithdrawalsPage(withdrawalsPage + 1)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="m9 6 6 6-6 6" />
+						</svg>
+					</button>
+				</footer>
 			</section>
 		</section>
 
 		<section class="summary-table-card">
 			<header class="table-header">
-				<h3>Movimenta&ccedil;&otilde;es</h3>
+				<h3>Movimenta&ccedil;&otilde;es de Investimento</h3>
 			</header>
 
 			<div class="table-shell">

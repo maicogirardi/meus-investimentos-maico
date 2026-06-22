@@ -25,6 +25,40 @@ function normalizeAmount(value) {
 	return Number.isFinite(normalized) ? Number(normalized.toFixed(2)) : 0;
 }
 
+function normalizeMonthlyStateData(data) {
+	const currentCapitalInvested = normalizeAmount(data.currentCapitalInvested);
+	const currentLiquidBalance = normalizeAmount(data.currentLiquidBalance);
+	const currentGrossBalance = normalizeAmount(data.currentGrossBalance);
+	const lastReadingDate = normalizeText(data.lastReadingDate);
+	const shouldTreatLiquidBalanceAsIncome = lastReadingDate && currentLiquidBalance > 0 && currentLiquidBalance < currentCapitalInvested;
+	const shouldTreatGrossBalanceAsIncome = lastReadingDate && currentGrossBalance > 0 && currentGrossBalance < currentCapitalInvested;
+	const rawMonthNetIncome = shouldTreatLiquidBalanceAsIncome
+		? currentLiquidBalance
+		: normalizeAmount(data.monthNetIncome);
+	const rawMonthGrossIncome = shouldTreatGrossBalanceAsIncome
+		? currentGrossBalance
+		: normalizeAmount(data.monthGrossIncome);
+
+	return {
+		openingCapitalInvested: normalizeAmount(data.openingCapitalInvested),
+		currentCapitalInvested,
+		openingLiquidBalance: normalizeAmount(data.openingLiquidBalance),
+		currentLiquidBalance: shouldTreatLiquidBalanceAsIncome
+			? normalizeAmount(currentCapitalInvested + currentLiquidBalance)
+			: currentLiquidBalance,
+		openingGrossBalance: normalizeAmount(data.openingGrossBalance),
+		currentGrossBalance: shouldTreatGrossBalanceAsIncome
+			? normalizeAmount(currentCapitalInvested + currentGrossBalance)
+			: currentGrossBalance,
+		monthNetIncome: rawMonthNetIncome,
+		monthGrossIncome: rawMonthGrossIncome,
+		monthContributions: normalizeAmount(data.monthContributions),
+		monthNormalWithdrawals: normalizeAmount(data.monthNormalWithdrawals),
+		monthExtraWithdrawals: normalizeAmount(data.monthExtraWithdrawals),
+		lastReadingDate,
+	};
+}
+
 // Escuta os ativos do usuário e já entrega os dados normalizados.
 export function subscribeAssets(uid, callback) {
 	const db = getFirebaseDb();
@@ -69,22 +103,12 @@ export function subscribeAssetMonthlyStates(uid, callback) {
 		const monthlyStates = snapshot.docs
 			.map((monthlyStateDoc) => {
 				const data = monthlyStateDoc.data() || {};
+				const normalizedMonthlyState = normalizeMonthlyStateData(data);
 				return {
 					id: monthlyStateDoc.id,
 					assetId: normalizeText(data.assetId),
 					periodId: normalizeText(data.periodId),
-					openingCapitalInvested: normalizeAmount(data.openingCapitalInvested),
-					currentCapitalInvested: normalizeAmount(data.currentCapitalInvested),
-					openingLiquidBalance: normalizeAmount(data.openingLiquidBalance),
-					currentLiquidBalance: normalizeAmount(data.currentLiquidBalance),
-					openingGrossBalance: normalizeAmount(data.openingGrossBalance),
-					currentGrossBalance: normalizeAmount(data.currentGrossBalance),
-					monthNetIncome: normalizeAmount(data.monthNetIncome),
-					monthGrossIncome: normalizeAmount(data.monthGrossIncome),
-					monthContributions: normalizeAmount(data.monthContributions),
-					monthNormalWithdrawals: normalizeAmount(data.monthNormalWithdrawals),
-					monthExtraWithdrawals: normalizeAmount(data.monthExtraWithdrawals),
-					lastReadingDate: normalizeText(data.lastReadingDate),
+					...normalizedMonthlyState,
 				};
 			})
 			.filter((monthlyState) => monthlyState.assetId && monthlyState.periodId)
@@ -98,6 +122,46 @@ export function subscribeAssetMonthlyStates(uid, callback) {
 			});
 
 		callback(monthlyStates);
+	});
+}
+
+export function subscribeDailyReadings(uid, callback) {
+	const db = getFirebaseDb();
+	if (!db || !uid) {
+		return () => {};
+	}
+
+	const dailyReadingsCollection = collection(db, "users", uid, "dailyReadings");
+
+	return onSnapshot(dailyReadingsCollection, (snapshot) => {
+		const dailyReadings = snapshot.docs
+			.map((dailyReadingDoc) => {
+				const data = dailyReadingDoc.data() || {};
+				const liquidIncome = normalizeAmount(data.liquidIncome ?? data.liquidBalance);
+				const grossIncome = normalizeAmount(data.grossIncome ?? data.grossBalance);
+
+				return {
+					id: dailyReadingDoc.id,
+					assetId: normalizeText(data.assetId),
+					periodId: normalizeText(data.periodId),
+					readingDate: normalizeText(data.readingDate),
+					liquidIncome,
+					grossIncome,
+					liquidBalance: normalizeAmount(data.liquidBalance),
+					grossBalance: normalizeAmount(data.grossBalance),
+				};
+			})
+			.filter((dailyReading) => dailyReading.assetId && dailyReading.periodId && dailyReading.readingDate)
+			.sort((leftReading, rightReading) => {
+				const dateCompare = leftReading.readingDate.localeCompare(rightReading.readingDate, "pt-BR");
+				if (dateCompare !== 0) {
+					return dateCompare;
+				}
+
+				return leftReading.id.localeCompare(rightReading.id, "pt-BR", { sensitivity: "base" });
+			});
+
+		callback(dailyReadings);
 	});
 }
 

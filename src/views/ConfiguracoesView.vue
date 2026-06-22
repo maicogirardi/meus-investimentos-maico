@@ -209,9 +209,9 @@ function handleThemeToggle(event) {
 
 		<div v-if="isAuthenticated" class="settings-card">
 			<div class="settings-copy">
-				<label class="settings-label">Importar movimentações</label>
+				<label class="settings-label">Importar rendimento</label>
 				<p class="settings-help">
-					Importa {{ sheetImportCount }} movimentações confirmadas da planilha REAL para o CDB Itaú 100% CDI.
+					Limpa e reimporta {{ sheetImportCount }} rendimentos e os saques mensais da nova planilha para o CDB Itaú 100% CDI.
 				</p>
 				<p v-if="sheetImportMessage" class="settings-feedback">{{ sheetImportMessage }}</p>
 			</div>

@@ -1,32 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import AppSelect from "../components/ui/AppSelect.vue";
 
 const props = defineProps({
-	yearOptions: {
-		type: Array,
-		default: () => [],
-	},
-	monthOptions: {
-		type: Array,
-		default: () => [],
-	},
-	selectedYear: {
-		type: Number,
-		default: null,
-	},
-	selectedMonth: {
-		type: Number,
-		default: null,
-	},
-	periodLabel: {
-		type: String,
-		default: "",
-	},
-	hasSelectedPeriod: {
-		type: Boolean,
-		default: false,
-	},
 	isSubmitting: {
 		type: Boolean,
 		default: false,
@@ -43,13 +18,13 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
-	selectedPeriodId: {
-		type: String,
-		default: "",
+	dailyReadings: {
+		type: Array,
+		default: () => [],
 	},
 });
 
-const emit = defineEmits(["update:year", "update:month", "add-month", "delete-month", "submit-action"]);
+const emit = defineEmits(["submit-action"]);
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 	style: "currency",
@@ -61,7 +36,7 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 const actionConfigMap = Object.freeze({
 	update: {
 		title: "Atualizar ativo",
-		description: "Informe os saldos atuais para recalcular este card no período selecionado.",
+		description: "Informe os rendimentos do período da data escolhida.",
 		confirmLabel: "Salvar",
 		noteLabel: "",
 		notePlaceholder: "",
@@ -102,17 +77,25 @@ const selectedPeriodStateMap = computed(() => {
 	const monthlyStatesByAssetId = new Map();
 
 	props.monthlyStates.forEach((monthlyState) => {
-		if (monthlyState.periodId !== props.selectedPeriodId || !monthlyState.assetId) {
+		if (!monthlyState.assetId) {
 			return;
 		}
 
-		monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
+		const currentMonthlyState = monthlyStatesByAssetId.get(monthlyState.assetId) || null;
+		const currentReadingDate = String(currentMonthlyState?.lastReadingDate || "");
+		const nextReadingDate = String(monthlyState.lastReadingDate || "");
+		const shouldPreferReading = nextReadingDate && (!currentReadingDate || currentReadingDate.localeCompare(nextReadingDate, "pt-BR") < 0);
+		const shouldPreferPeriod = !currentReadingDate && !nextReadingDate && currentMonthlyState?.periodId.localeCompare(monthlyState.periodId, "pt-BR") < 0;
+
+		if (!currentMonthlyState || shouldPreferReading || shouldPreferPeriod) {
+			monthlyStatesByAssetId.set(monthlyState.assetId, monthlyState);
+		}
 	});
 
 	return monthlyStatesByAssetId;
 });
 const totalBalance = computed(() =>
-	activeAssets.value.reduce((total, asset) => total + getAssetCapitalInvested(asset), 0),
+	activeAssets.value.reduce((total, asset) => total + getAssetLiquidBalance(asset), 0),
 );
 const isWalletCardCompact = ref(false);
 const isActionModalOpen = ref(false);
@@ -149,6 +132,7 @@ const isLiquidBalanceMissing = computed(() => shouldShowActionValidation.value &
 const isGrossBalanceMissing = computed(() => shouldShowActionValidation.value && isUpdateAction.value && actionForm.grossBalance <= 0);
 const shouldReserveAmountErrorSpace = computed(() => shouldShowAmountField.value);
 const shouldReserveDateAmountErrorSpace = computed(() => isDateMissing.value || isAmountMissing.value);
+const actionPeriodLabel = computed(() => formatPeriodLabelFromDate(actionForm.date));
 const calculatorPreviewText = computed(() => {
 	if (!calculatorExpression.value.trim()) {
 		return "Resultado: R$ 0,00";
@@ -209,7 +193,27 @@ function formatDate(value) {
 	return `${String(month).padStart(2, "0")}/${year}`;
 }
 
-// Localiza o snapshot mensal do ativo no período selecionado.
+// Localiza o snapshot mensal mais recente do ativo.
+function formatPeriodLabelFromDate(value) {
+	const normalized = String(value || "").trim();
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+		return "--";
+	}
+
+	const [year, month] = normalized.split("-");
+	return `${String(month).padStart(2, "0")}/${year}`;
+}
+
+function formatFullDate(value) {
+	const normalized = String(value || "").trim();
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+		return "";
+	}
+
+	const [year, month, day] = normalized.split("-");
+	return `${day}/${month}/${year}`;
+}
+
 function getAssetMonthlyState(assetId) {
 	return selectedPeriodStateMap.value.get(assetId) || null;
 }
@@ -217,6 +221,55 @@ function getAssetMonthlyState(assetId) {
 // Usa o valor mensal atual e cai no valor inicial quando necessário.
 function getAssetCapitalInvested(asset) {
 	return Number(getAssetMonthlyState(asset?.id)?.currentCapitalInvested ?? asset?.initialValue ?? 0);
+}
+
+function getAssetReadingDate(asset) {
+	return formatFullDate(getAssetMonthlyState(asset?.id)?.lastReadingDate);
+}
+
+function getAssetNetIncome(asset) {
+	return Number(getAssetMonthlyState(asset?.id)?.monthNetIncome ?? 0);
+}
+
+function getAssetLiquidBalance(asset) {
+	return Number(getAssetMonthlyState(asset?.id)?.currentLiquidBalance ?? asset?.initialValue ?? 0);
+}
+
+function getAssetDailyIncome(asset) {
+	const monthlyState = getAssetMonthlyState(asset?.id);
+	const readingDate = String(monthlyState?.lastReadingDate || "").trim();
+
+	if (!monthlyState || !/^\d{4}-\d{2}-\d{2}$/.test(readingDate)) {
+		return null;
+	}
+
+	const currentLiquidIncome = Number(monthlyState.monthNetIncome ?? 0);
+
+	const assetReadings = props.dailyReadings
+		.filter((dailyReading) => dailyReading.assetId === asset?.id && dailyReading.periodId === monthlyState.periodId)
+		.sort((leftReading, rightReading) => {
+			const dateCompare = String(leftReading.readingDate || "").localeCompare(String(rightReading.readingDate || ""), "pt-BR");
+			if (dateCompare !== 0) {
+				return dateCompare;
+			}
+
+			return String(leftReading.id || "").localeCompare(String(rightReading.id || ""), "pt-BR", { sensitivity: "base" });
+		});
+	const currentReadingIndex = assetReadings.findIndex((dailyReading) => dailyReading.readingDate === readingDate);
+	const currentReading = currentReadingIndex >= 0 ? assetReadings[currentReadingIndex] : null;
+	const previousReading = currentReadingIndex > 0 ? assetReadings[currentReadingIndex - 1] : null;
+
+	if (!currentReading) {
+		return currentLiquidIncome;
+	}
+
+	return previousReading
+		? currentLiquidIncome - Number(previousReading.liquidIncome || 0)
+		: currentLiquidIncome;
+}
+
+function formatOptionalCurrency(value) {
+	return value == null ? "--" : formatCurrency(value);
 }
 
 // Gera a data local no formato que o input aceita.
@@ -249,6 +302,11 @@ function parseCurrencyInput(value) {
 	const integerValue = Number(integerPart || "0");
 	const fractionValue = Number(decimalPart.padEnd(2, "0") || "0");
 	return integerValue + fractionValue / 100;
+}
+
+function parseCurrencyInputAsCents(value) {
+	const digits = String(value ?? "").replace(/\D/g, "");
+	return Number(digits || "0") / 100;
 }
 
 function normalizeCalculatorExpression(value) {
@@ -433,9 +491,20 @@ function handleCurrencyInput(event, fieldKey) {
 		return;
 	}
 
-	const parsedValue = parseCurrencyInput(event.target.value);
-	setCurrencyField(fieldKey, parsedValue);
-	event.target.value = normalizeCurrencyText(event.target.value);
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
+	const parsedValue = parseCurrencyInputAsCents(target?.value ?? "");
+	const displayValue = formatCurrency(parsedValue);
+	actionForm[fieldKey] = parsedValue;
+
+	if (fieldKey === "liquidBalance") {
+		liquidBalanceInput.value = displayValue;
+	} else {
+		grossBalanceInput.value = displayValue;
+	}
+
+	if (target && target.value !== displayValue) {
+		target.value = displayValue;
+	}
 }
 
 function handleCurrencyFocus(event, fieldKey) {
@@ -444,8 +513,22 @@ function handleCurrencyFocus(event, fieldKey) {
 		return;
 	}
 
+	const target = event?.target instanceof HTMLInputElement ? event.target : null;
 	const currentValue = Number(actionForm[fieldKey] || 0);
-	event.target.value = currentValue > 0 ? normalizeCurrencyText(event.target.value) : "";
+	const displayValue = formatCurrency(currentValue);
+
+	if (fieldKey === "liquidBalance") {
+		liquidBalanceInput.value = displayValue;
+	} else {
+		grossBalanceInput.value = displayValue;
+	}
+
+	if (target) {
+		target.value = displayValue;
+		requestAnimationFrame(() => {
+			target.setSelectionRange(target.value.length, target.value.length);
+		});
+	}
 }
 
 function handleCurrencyBlur(fieldKey) {
@@ -696,6 +779,17 @@ function isKeyboardShortcutTargetBlocked() {
 }
 
 // Direciona atalhos do teclado para o modal ativo.
+function handleWindowScroll() {
+	if (!isWalletCardCompact.value && window.scrollY > 20) {
+		isWalletCardCompact.value = true;
+		return;
+	}
+
+	if (isWalletCardCompact.value && window.scrollY < 4) {
+		isWalletCardCompact.value = false;
+	}
+}
+
 function handleActionModalKeydown(event) {
 	if (!isActionModalOpen.value || props.isSubmitting) {
 		return;
@@ -716,10 +810,6 @@ function handleActionModalKeydown(event) {
 }
 
 // Ajusta a compactação do card principal conforme a rolagem.
-function handleWindowScroll() {
-	isWalletCardCompact.value = window.scrollY > 120;
-}
-
 onMounted(() => {
 	handleWindowScroll();
 	window.addEventListener("scroll", handleWindowScroll, { passive: true });
@@ -734,50 +824,8 @@ onBeforeUnmount(() => {
 
 <template>
 	<section class="home-view">
-		<section class="filter-card">
-			<div class="filter-row">
-				<div class="filter-selects">
-					<AppSelect
-						class="year-filter"
-						:model-value="selectedYear"
-						:options="yearOptions"
-						placeholder="Ano"
-						@update:model-value="$emit('update:year', $event)"
-					/>
 
-					<AppSelect
-						class="month-filter"
-						:model-value="selectedMonth"
-						:options="monthOptions"
-						placeholder="Mês"
-						@update:model-value="$emit('update:month', $event)"
-					/>
-				</div>
-
-				<div class="filter-spacer" />
-
-				<div class="filter-actions">
-					<button :disabled="isSubmitting" type="button" @click="$emit('add-month')">
-						<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-							<path fill-rule="evenodd" d="M9 7V2.221a2 2 0 0 0-.5.365L4.586 6.5a2 2 0 0 0-.365.5H9Zm2 0V2h7a2 2 0 0 1 2 2v6.41A7.5 7.5 0 1 0 10.5 22H6a2 2 0 0 1-2-2V9h5a2 2 0 0 0 2-2Z" clip-rule="evenodd" />
-							<path fill-rule="evenodd" d="M9 16a6 6 0 1 1 12 0 6 6 0 0 1-12 0Zm6-3a1 1 0 0 1 1 1v1h1a1 1 0 1 1 0 2h-1v1a1 1 0 1 1-2 0v-1h-1a1 1 0 1 1 0-2h1v-1a1 1 0 0 1 1-1Z" clip-rule="evenodd" />
-						</svg>
-					</button>
-
-					<button class="danger-button month-remove-button" :disabled="isSubmitting || !hasSelectedPeriod" type="button" @click="$emit('delete-month')">
-						<svg class="delete-icon-svg" width="26" height="26" viewBox="124 86 10 16" aria-hidden="true">
-							<path
-								d="M 126.81 89.11 L 126.81 87.61 C 126.81 87.058 127.258 86.61 127.81 86.61 L 130.81 86.61 C 131.362 86.61 131.81 87.058 131.81 87.61 L 131.81 89.11 L 124.81 89.11 L 124.918 89.901 L 133.702 89.901 L 133.81 89.11 Z M 132.31 99.11 C 132.283 99.643 131.843 100.061 131.31 100.06 L 127.31 100.06 C 126.777 100.061 126.337 99.643 126.31 99.11 L 125.036 90.767 L 133.584 90.767 Z M 130.627 98.807 L 131.493 98.807 L 131.493 91.978 L 130.627 91.978 Z M 128.902 98.807 L 129.768 98.807 L 129.768 91.978 L 128.902 91.978 Z M 127.204 98.807 L 128.07 98.807 L 128.07 91.978 L 127.204 91.978 Z"
-								fill="currentColor"
-								style="stroke-width: 1;"
-							/>
-						</svg>
-					</button>
-				</div>
-			</div>
-		</section>
-
-		<section v-if="hasSelectedPeriod" class="wallet-card" :class="{ 'wallet-card-compact': isWalletCardCompact }">
+		<section class="wallet-card" :class="{ 'wallet-card-compact': isWalletCardCompact }">
 			<div class="wallet-card-main">
 				<p class="wallet-label">Saldo total</p>
 				<strong class="wallet-total">{{ formatCurrency(totalBalance) }}</strong>
@@ -789,16 +837,16 @@ onBeforeUnmount(() => {
 						<span class="wallet-asset-dot" :style="{ '--asset-color': asset.color || '#4F7CFF' }" />
 						<span class="wallet-asset-name">{{ asset.name }}</span>
 					</div>
-					<strong class="wallet-asset-value">{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
+					<strong class="wallet-asset-value">{{ formatCurrency(getAssetLiquidBalance(asset)) }}</strong>
 				</li>
 			</ul>
 
 			<div v-else class="wallet-empty-state">
-				<span>Nenhum ativo cadastrado neste período.</span>
+				<span>Nenhum ativo cadastrado.</span>
 			</div>
 		</section>
 
-		<section v-if="hasSelectedPeriod && activeAssets.length > 0" class="asset-panel">
+		<section v-if="activeAssets.length > 0" class="asset-panel">
 			<section class="asset-list">
 				<article
 					v-for="asset in activeAssets"
@@ -841,23 +889,35 @@ onBeforeUnmount(() => {
 
 					<div class="home-metrics-grid">
 						<article class="metric-card">
-							<span>Total</span>
+							<div class="metric-card-header">
+								<span>Total investido</span>
+								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
+							</div>
 							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
 						</article>
 
 						<article class="metric-card">
-							<span>Rendimento</span>
-							<strong>--</strong>
+							<div class="metric-card-header">
+								<span>Rendimento</span>
+								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
+							</div>
+							<strong>{{ formatCurrency(getAssetNetIncome(asset)) }}</strong>
 						</article>
 
 						<article class="metric-card">
-							<span>Saldo atual no banco</span>
-							<strong>--</strong>
+							<div class="metric-card-header">
+								<span>Saldo atual no banco</span>
+								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
+							</div>
+							<strong>{{ formatCurrency(getAssetLiquidBalance(asset)) }}</strong>
 						</article>
 
 						<article class="metric-card">
-							<span>Rendimento diário</span>
-							<strong>--</strong>
+							<div class="metric-card-header">
+								<span>Rendimento líquido diário</span>
+								<small v-if="getAssetReadingDate(asset)">{{ getAssetReadingDate(asset) }}</small>
+							</div>
+							<strong>{{ formatOptionalCurrency(getAssetDailyIncome(asset)) }}</strong>
 						</article>
 					</div>
 
@@ -999,16 +1059,11 @@ onBeforeUnmount(() => {
 			</section>
 		</section>
 
-		<section v-else-if="hasSelectedPeriod" class="empty-card">
+		<section v-else class="empty-card">
 			<h3>Nenhum ativo cadastrado.</h3>
 			<p>Cadastre ativos na aba Ativos para começar a montar os cards da Home.</p>
 		</section>
 
-		<section v-else class="empty-card">
-			<p class="eyebrow">Período</p>
-			<h3>Nenhum mês criado.</h3>
-			<p>Use o botão de adicionar para escolher o primeiro mês da carteira.</p>
-		</section>
 		<div v-if="isActionModalOpen" class="modal-backdrop" @click="closeActionModal">
 				<div class="modal-card home-action-modal" @click.stop>
 					<header class="modal-header">
@@ -1024,7 +1079,7 @@ onBeforeUnmount(() => {
 
 					<div class="summary-field">
 						<span>Período</span>
-						<strong>{{ periodLabel || "--" }}</strong>
+						<strong>{{ actionPeriodLabel }}</strong>
 					</div>
 				</div>
 
@@ -1046,7 +1101,7 @@ onBeforeUnmount(() => {
 					</div>
 
 					<div v-if="isUpdateAction" class="field-group">
-						<label class="field-label" for="home-liquid-balance">Saldo líquido atual</label>
+						<label class="field-label" for="home-liquid-balance">Rendimento líquido</label>
 						<input
 							id="home-liquid-balance"
 							:value="liquidBalanceInput"
@@ -1059,11 +1114,11 @@ onBeforeUnmount(() => {
 							@input="handleCurrencyInput($event, 'liquidBalance')"
 							@blur="handleCurrencyBlur('liquidBalance')"
 						/>
-						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um saldo líquido maior que zero.</div>
+						<div v-if="isLiquidBalanceMissing" class="error-text">Informe um rendimento líquido maior que zero.</div>
 					</div>
 
 					<div v-if="isUpdateAction" class="field-group">
-						<label class="field-label" for="home-gross-balance">Saldo bruto atual</label>
+						<label class="field-label" for="home-gross-balance">Rendimento bruto</label>
 						<input
 							id="home-gross-balance"
 							:value="grossBalanceInput"
@@ -1076,7 +1131,7 @@ onBeforeUnmount(() => {
 							@input="handleCurrencyInput($event, 'grossBalance')"
 							@blur="handleCurrencyBlur('grossBalance')"
 						/>
-						<div v-if="isGrossBalanceMissing" class="error-text">Informe um saldo bruto maior que zero.</div>
+						<div v-if="isGrossBalanceMissing" class="error-text">Informe um rendimento bruto maior que zero.</div>
 					</div>
 
 					<div v-if="shouldShowNoteField" class="field-group field-group-full">
@@ -1463,6 +1518,24 @@ onBeforeUnmount(() => {
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--text-soft);
+}
+
+.metric-card-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.metric-card-header small {
+	flex: 0 0 auto;
+	color: var(--text-soft);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	line-height: 1.2;
+	opacity: 0.7;
+	white-space: nowrap;
 }
 
 .entry-value-card strong,
