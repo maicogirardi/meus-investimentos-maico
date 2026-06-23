@@ -13,6 +13,10 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	dailyReadings: {
+		type: Array,
+		default: () => [],
+	},
 	transactions: {
 		type: Array,
 		default: () => [],
@@ -159,7 +163,7 @@ const assetPeriodRows = computed(() =>
 				color: asset?.color || "#4F7CFF",
 				periodLabel: formatPeriodLabel(monthlyState.periodId),
 				periodId: monthlyState.periodId,
-				netIncome: monthlyState.monthNetIncome,
+				netIncome: getMonthlyNetIncome(monthlyState),
 				grossIncome: monthlyState.monthGrossIncome,
 			};
 		})
@@ -205,6 +209,17 @@ const selectedLedgerTransactions = computed(() => [
 	...initialAssetTransactions.value,
 ]);
 
+function getMonthlyNetIncome(monthlyState) {
+	const monthlyReadings = props.dailyReadings
+		.filter((dailyReading) =>
+			dailyReading.assetId === monthlyState.assetId
+			&& dailyReading.periodId === monthlyState.periodId,
+		);
+	const readingTotal = monthlyReadings.reduce((total, dailyReading) => total + Number(dailyReading.liquidIncome || 0), 0);
+
+	return monthlyReadings.length > 0 ? readingTotal : Number(monthlyState.monthNetIncome || 0);
+}
+
 function getTransactionYear(transaction) {
 	const dateYear = getPeriodYear(String(transaction?.transactionDate || "").slice(0, 7));
 	return Number.isInteger(dateYear) ? dateYear : getPeriodYear(transaction?.periodId);
@@ -237,7 +252,7 @@ const annualRows = computed(() => {
 				const normalWithdrawals = yearlyTransactions.reduce((total, transaction) =>
 					total + (transaction.type === "withdrawal" ? Number(transaction.amount || 0) : 0), 0);
 				const netIncome = yearlyStates.reduce((total, monthlyState) =>
-					total + Number(monthlyState.monthNetIncome || 0), 0);
+					total + getMonthlyNetIncome(monthlyState), 0);
 
 				accumulatedBalance = accumulatedBalance + contribution - extraWithdrawals;
 

@@ -79,8 +79,8 @@ function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 		currentLiquidBalance: baseState.currentLiquidBalance,
 		openingGrossBalance: baseState.currentGrossBalance,
 		currentGrossBalance: baseState.currentGrossBalance,
-		monthNetIncome: baseState.monthNetIncome,
-		monthGrossIncome: baseState.monthGrossIncome,
+		monthNetIncome: 0,
+		monthGrossIncome: 0,
 		monthContributions: 0,
 		monthNormalWithdrawals: 0,
 		monthExtraWithdrawals: 0,
@@ -88,10 +88,13 @@ function buildMonthlyStateSeed(asset, referenceMonthlyState, periodId) {
 	};
 }
 
-// Aplica a leitura usando saldo bancário líquido e rendimento bruto informado.
-function applyIncomeReading(monthlyState, liquidBalance, grossIncome, readingDate) {
+// Aplica saldo bancário líquido e acumula no mês apenas a diferença diária.
+function applyIncomeReading(monthlyState, liquidBalance, grossIncome, readingDate, liquidIncomeDelta = null) {
 	const normalizedLiquidBalance = normalizeAmount(liquidBalance);
 	const normalizedGrossIncome = normalizeAmount(grossIncome);
+	const normalizedLiquidIncomeDelta = liquidIncomeDelta == null
+		? normalizeAmount(normalizedLiquidBalance - monthlyState.currentLiquidBalance)
+		: normalizeAmount(liquidIncomeDelta);
 	const normalGrossWithdrawalOffset = normalizeAmount(Math.max(
 		0,
 		monthlyState.currentCapitalInvested + monthlyState.monthGrossIncome - monthlyState.currentGrossBalance,
@@ -101,7 +104,7 @@ function applyIncomeReading(monthlyState, liquidBalance, grossIncome, readingDat
 		...monthlyState,
 		currentLiquidBalance: normalizedLiquidBalance,
 		currentGrossBalance: normalizeAmount(Math.max(0, monthlyState.currentCapitalInvested - normalGrossWithdrawalOffset + normalizedGrossIncome)),
-		monthNetIncome: normalizeAmount(normalizedLiquidBalance - monthlyState.currentCapitalInvested),
+		monthNetIncome: normalizeAmount(monthlyState.monthNetIncome + normalizedLiquidIncomeDelta),
 		monthGrossIncome: normalizedGrossIncome,
 		lastReadingDate: normalizeActionDate(readingDate),
 	};
@@ -112,6 +115,12 @@ function isTransactionActionType(type) {
 		type === actionKinds.contribution
 		|| type === actionKinds.withdrawal
 		|| type === actionKinds.extraWithdrawal
+	);
+}
+
+function getDailyReadingsNetIncomeTotal(dailyReadings) {
+	return normalizeAmount(
+		dailyReadings.reduce((total, dailyReading) => total + normalizeAmount(dailyReading.liquidIncome), 0),
 	);
 }
 
@@ -165,6 +174,7 @@ function buildRecomputedMonthlyState(baseMonthlyState, transactions, dailyReadin
 				entryLiquidBalance,
 				entry.grossIncome ?? entry.grossBalance,
 				entry.readingDate || entry.actionDate,
+				entry.liquidIncome,
 			);
 			return;
 		}
@@ -289,12 +299,18 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 		const liquidBalance = normalizeAmount(actionInput?.liquidBalance);
 		const grossIncome = normalizeAmount(actionInput?.grossBalance);
 		const dailyLiquidIncome = normalizeAmount(liquidBalance - nextMonthlyState.currentLiquidBalance);
+		const periodDailyReadings = context?.periodDailyReadings || [];
+		const previousReadingsNetIncome = getDailyReadingsNetIncomeTotal(periodDailyReadings);
 
 		if (liquidBalance <= 0 || grossIncome <= 0) {
 			throw new Error("Leitura diária inválida.");
 		}
 
-		nextMonthlyState = applyIncomeReading(nextMonthlyState, liquidBalance, grossIncome, actionDate);
+		if (periodDailyReadings.length > 0) {
+			nextMonthlyState.monthNetIncome = previousReadingsNetIncome;
+		}
+
+		nextMonthlyState = applyIncomeReading(nextMonthlyState, liquidBalance, grossIncome, actionDate, dailyLiquidIncome);
 
 		const dailyReadingRef = doc(collection(db, "users", uid, "dailyReadings"));
 		batch.set(dailyReadingRef, {

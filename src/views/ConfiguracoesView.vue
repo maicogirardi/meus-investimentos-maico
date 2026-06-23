@@ -42,17 +42,9 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
-	sheetImportCount: {
-		type: Number,
-		default: 0,
-	},
-	sheetImportMessage: {
-		type: String,
-		default: "",
-	},
 });
 
-const emit = defineEmits(["update-theme", "update-theme-color", "login", "logout", "install-app", "import-investment-sheet"]);
+const emit = defineEmits(["update-theme", "update-theme-color", "login", "logout", "install-app"]);
 
 const isDarkMode = computed(() => props.theme === "dark");
 const themeColorText = ref(props.themeColor);
@@ -203,26 +195,6 @@ function handleThemeToggle(event) {
 					@click="$emit('logout')"
 				>
 					Encerrar sessão
-				</button>
-			</div>
-		</div>
-
-		<div v-if="isAuthenticated" class="settings-card">
-			<div class="settings-copy">
-				<label class="settings-label">Importar rendimento</label>
-				<p class="settings-help">
-					Limpa e reimporta {{ sheetImportCount }} rendimentos e os saques mensais da nova planilha para o CDB Itaú 100% CDI.
-				</p>
-				<p v-if="sheetImportMessage" class="settings-feedback">{{ sheetImportMessage }}</p>
-			</div>
-
-			<div class="settings-actions">
-				<button
-					:disabled="isSubmitting"
-					type="button"
-					@click="$emit('import-investment-sheet')"
-				>
-					{{ isSubmitting ? "Importando..." : "Importar agora" }}
 				</button>
 			</div>
 		</div>

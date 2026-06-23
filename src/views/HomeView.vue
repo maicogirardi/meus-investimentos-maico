@@ -231,6 +231,30 @@ function getAssetGrossIncome(asset) {
 	return Number(getAssetMonthlyState(asset?.id)?.monthGrossIncome ?? 0);
 }
 
+function getAssetMonthReadings(asset, monthlyState) {
+	return props.dailyReadings
+		.filter((dailyReading) => dailyReading.assetId === asset?.id && dailyReading.periodId === monthlyState?.periodId)
+		.sort((leftReading, rightReading) => {
+			const dateCompare = String(leftReading.readingDate || "").localeCompare(String(rightReading.readingDate || ""), "pt-BR");
+			if (dateCompare !== 0) {
+				return dateCompare;
+			}
+
+			return String(leftReading.id || "").localeCompare(String(rightReading.id || ""), "pt-BR", { sensitivity: "base" });
+		});
+}
+
+function getAssetNetIncome(asset) {
+	const monthlyState = getAssetMonthlyState(asset?.id);
+	const monthReadings = getAssetMonthReadings(asset, monthlyState);
+
+	if (monthReadings.length > 0) {
+		return monthReadings.reduce((total, dailyReading) => total + Number(dailyReading.liquidIncome || 0), 0);
+	}
+
+	return Number(monthlyState?.monthNetIncome ?? 0);
+}
+
 function getAssetLiquidBalance(asset) {
 	return Number(getAssetMonthlyState(asset?.id)?.currentLiquidBalance ?? asset?.initialValue ?? 0);
 }
@@ -243,18 +267,8 @@ function getAssetDailyIncome(asset) {
 		return null;
 	}
 
-	const currentLiquidIncome = Number(monthlyState.monthNetIncome ?? 0);
-
-	const assetReadings = props.dailyReadings
-		.filter((dailyReading) => dailyReading.assetId === asset?.id && dailyReading.periodId === monthlyState.periodId)
-		.sort((leftReading, rightReading) => {
-			const dateCompare = String(leftReading.readingDate || "").localeCompare(String(rightReading.readingDate || ""), "pt-BR");
-			if (dateCompare !== 0) {
-				return dateCompare;
-			}
-
-			return String(leftReading.id || "").localeCompare(String(rightReading.id || ""), "pt-BR", { sensitivity: "base" });
-	});
+	const currentLiquidIncome = getAssetNetIncome(asset);
+	const assetReadings = getAssetMonthReadings(asset, monthlyState);
 	const currentReadingIndex = assetReadings.findIndex((dailyReading) => dailyReading.readingDate === readingDate);
 	const currentReading = currentReadingIndex >= 0 ? assetReadings[currentReadingIndex] : null;
 
@@ -879,8 +893,8 @@ onBeforeUnmount(() => {
 						</div>
 
 						<div class="entry-value-card">
-							<span>Valor de entrada</span>
-							<strong>{{ formatCurrency(asset.initialValue) }}</strong>
+							<span>Total investido</span>
+							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
 						</div>
 					</div>
 
@@ -895,9 +909,9 @@ onBeforeUnmount(() => {
 
 						<article class="metric-card">
 							<div class="metric-card-header">
-								<span>Total investido</span>
+								<span>Rendimento bruto</span>
 							</div>
-							<strong>{{ formatCurrency(getAssetCapitalInvested(asset)) }}</strong>
+							<strong>{{ formatCurrency(getAssetGrossIncome(asset)) }}</strong>
 						</article>
 
 						<article class="metric-card metric-card-accent">
@@ -910,9 +924,9 @@ onBeforeUnmount(() => {
 
 						<article class="metric-card">
 							<div class="metric-card-header">
-								<span>Rendimento bruto</span>
+								<span>Rendimento líquido</span>
 							</div>
-							<strong>{{ formatCurrency(getAssetGrossIncome(asset)) }}</strong>
+							<strong>{{ formatCurrency(getAssetNetIncome(asset)) }}</strong>
 						</article>
 					</div>
 

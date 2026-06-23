@@ -16,10 +16,6 @@ import {
 	updateAssetWithInitialMonthlyState,
 } from "./services/assets";
 import { deleteHomeTransaction, saveHomeAssetAction, updateHomeTransaction } from "./services/homeActions";
-import {
-	getInvestmentSheetReadingCount,
-	importInvestmentSheetReadings,
-} from "./services/investmentSheetImport";
 import { buildPeriodId, ensurePeriod, subscribePeriods } from "./services/periods";
 import { getFirebaseAuth, getFirebaseDb } from "./services/firebase";
 import AtivosView from "./views/AtivosView.vue";
@@ -70,7 +66,6 @@ const periodModalMonth = ref(today.getMonth() + 1);
 const assetErrorMessage = ref("");
 const homeActionErrorMessage = ref("");
 const summaryActionErrorMessage = ref("");
-const sheetImportMessage = ref("");
 const deletePeriodTarget = ref(null);
 const deleteAssetTarget = ref(null);
 const shouldShowPeriodValidation = ref(false);
@@ -598,7 +593,6 @@ function clearUserState() {
 	assetErrorMessage.value = "";
 	homeActionErrorMessage.value = "";
 	summaryActionErrorMessage.value = "";
-	sheetImportMessage.value = "";
 	applyTheme();
 }
 
@@ -947,36 +941,6 @@ async function handleDeleteTransaction(transactionId) {
 	}
 }
 
-// Limpa e reimporta os rendimentos da nova planilha.
-async function handleImportInvestmentSheet() {
-	if (!currentUser.value) {
-		return;
-	}
-
-	const targetAsset = assets.value.find((asset) => {
-		const name = String(asset.name || "").trim().toLowerCase();
-		return name.includes("cdb") && name.includes("itaú") && name.includes("100% cdi");
-	});
-
-	if (!targetAsset) {
-		sheetImportMessage.value = "Não encontrei o ativo CDB Itaú 100% CDI cadastrado.";
-		return;
-	}
-
-	status.value = "loading";
-	sheetImportMessage.value = "";
-
-	try {
-		const result = await importInvestmentSheetReadings(currentUser.value.uid, targetAsset);
-		sheetImportMessage.value = `${result.readingCount} rendimentos e ${result.withdrawalCount} saques importados para ${targetAsset.name}.`;
-	} catch (error) {
-		console.error("Falha ao importar rendimentos da planilha", error);
-		sheetImportMessage.value = "Não foi possível importar os rendimentos agora.";
-	} finally {
-		status.value = "idle";
-	}
-}
-
 // Remove o ativo em cascata e fecha o modal só quando concluir.
 async function confirmDeleteAsset() {
 	if (!currentUser.value || !deleteAssetTarget.value?.id) {
@@ -1133,14 +1097,11 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
-				:sheet-import-count="getInvestmentSheetReadingCount()"
-				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
 				@install-app="handleInstallApp"
-				@import-investment-sheet="handleImportInvestmentSheet"
 			/>
 
 			<div v-else-if="!isDataReady" class="page-section status-card">
@@ -1161,6 +1122,7 @@ onBeforeUnmount(() => {
 				v-else-if="currentPage === 'summary'"
 				:assets="assets"
 				:monthly-states="assetMonthlyStates"
+				:daily-readings="dailyReadings"
 				:transactions="transactions"
 				:is-submitting="isSubmitting"
 				:error-message="summaryActionErrorMessage"
@@ -1193,14 +1155,11 @@ onBeforeUnmount(() => {
 				:is-app-installed="isAppInstalled"
 				:is-install-supported="isInstallSupported"
 				:is-installing-app="isInstallingApp"
-				:sheet-import-count="getInvestmentSheetReadingCount()"
-				:sheet-import-message="sheetImportMessage"
 				@update-theme="savePreferences({ darkMode: $event === 'dark' })"
 				@update-theme-color="savePreferences({ themeColor: $event })"
 				@login="handleGoogleSignIn"
 				@logout="handleSignOut"
 				@install-app="handleInstallApp"
-				@import-investment-sheet="handleImportInvestmentSheet"
 			/>
 
 			<BottomTabs
