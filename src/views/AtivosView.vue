@@ -597,7 +597,7 @@ function submitAsset() {
 	pendingSubmitMode.value = "create";
 }
 
-// Evita roubar atalhos quando o foco está em um campo editável.
+// Evita roubar atalhos quando o foco está em controles com teclado próprio.
 function isKeyboardShortcutTargetBlocked() {
 	const activeElement = document.activeElement;
 
@@ -609,7 +609,6 @@ function isKeyboardShortcutTargetBlocked() {
 
 	return (
 		activeElement.isContentEditable ||
-		tagName === "INPUT" ||
 		tagName === "TEXTAREA" ||
 		tagName === "SELECT" ||
 		tagName === "BUTTON" ||

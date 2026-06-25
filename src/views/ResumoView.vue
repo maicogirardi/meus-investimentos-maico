@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import AppSelect from "../components/ui/AppSelect.vue";
 
 const MOVEMENTS_PER_PAGE = 5;
@@ -618,6 +618,75 @@ function confirmTransactionDelete() {
 	emit("delete-transaction", deleteTransactionTarget.value.id);
 }
 
+// Resolve qual modal de movimentação deve responder aos atalhos.
+function getActiveTransactionModalActions() {
+	if (isEditTransactionModalOpen.value) {
+		return {
+			confirm: submitTransactionEdit,
+			cancel: () => closeEditTransactionModal(),
+		};
+	}
+
+	if (deleteTransactionTarget.value) {
+		return {
+			confirm: confirmTransactionDelete,
+			cancel: () => closeDeleteTransactionModal(),
+		};
+	}
+
+	return null;
+}
+
+// Evita capturar Enter quando o foco está em controles com teclado próprio.
+function isKeyboardShortcutTargetBlocked() {
+	const activeElement = document.activeElement;
+
+	if (!(activeElement instanceof HTMLElement)) {
+		return false;
+	}
+
+	const tagName = activeElement.tagName;
+
+	return (
+		activeElement.isContentEditable ||
+		tagName === "TEXTAREA" ||
+		tagName === "SELECT" ||
+		tagName === "BUTTON" ||
+		tagName === "A"
+	);
+}
+
+// Direciona Enter e Escape para o modal ativo.
+function handleTransactionModalKeydown(event) {
+	if (props.isSubmitting) {
+		return;
+	}
+
+	const modalActions = getActiveTransactionModalActions();
+	if (!modalActions) {
+		return;
+	}
+
+	if (event.key === "Escape") {
+		event.preventDefault();
+
+		if (activeCalculatorField.value === "amount") {
+			closeCalculator();
+			return;
+		}
+
+		modalActions.cancel();
+		return;
+	}
+
+	if (event.key !== "Enter" || event.shiftKey || isKeyboardShortcutTargetBlocked()) {
+		return;
+	}
+
+	event.preventDefault();
+	modalActions.confirm();
+}
+
 // Limpa o texto monetário mantendo a parte decimal.
 function normalizeCurrencyText(value) {
 	const raw = String(value ?? "").replace("R$ ", "");
@@ -1035,6 +1104,14 @@ function formatTransactionDate(value) {
 	const [year, month, day] = normalized.split("-");
 	return `${day}/${month}/${year}`;
 }
+
+onMounted(() => {
+	window.addEventListener("keydown", handleTransactionModalKeydown);
+});
+
+onBeforeUnmount(() => {
+	window.removeEventListener("keydown", handleTransactionModalKeydown);
+});
 </script>
 
 <template>

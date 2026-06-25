@@ -769,7 +769,7 @@ function submitAction() {
 	});
 }
 
-// Evita capturar Enter/Escape quando o foco está em um controle editável.
+// Evita capturar Enter quando o foco está em controles com teclado próprio.
 function isKeyboardShortcutTargetBlocked() {
 	const activeElement = document.activeElement;
 
@@ -781,7 +781,6 @@ function isKeyboardShortcutTargetBlocked() {
 
 	return (
 		activeElement.isContentEditable ||
-		tagName === "INPUT" ||
 		tagName === "TEXTAREA" ||
 		tagName === "SELECT" ||
 		tagName === "BUTTON" ||
