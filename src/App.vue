@@ -829,7 +829,10 @@ async function handleHomeAssetAction(actionInput) {
 	}
 
 	const actionDate = String(actionInput?.date || "").trim();
-	const actionPeriodId = /^\d{4}-\d{2}-\d{2}$/.test(actionDate)
+	const explicitPeriodId = String(actionInput?.periodId || "").trim();
+	const actionPeriodId = /^\d{4}-\d{2}$/.test(explicitPeriodId)
+		? explicitPeriodId
+		: /^\d{4}-\d{2}-\d{2}$/.test(actionDate)
 		? actionDate.slice(0, 7)
 		: selectedPeriodId.value;
 
@@ -847,6 +850,10 @@ async function handleHomeAssetAction(actionInput) {
 		.filter((monthlyState) => monthlyState.assetId === asset.id)
 		.sort((leftState, rightState) => leftState.periodId.localeCompare(rightState.periodId, "pt-BR"));
 	const currentMonthlyState = assetStates.find((monthlyState) => monthlyState.periodId === actionPeriodId) || null;
+	if (actionInput?.type === "grossIncomeCorrection" && !currentMonthlyState) {
+		homeActionErrorMessage.value = "Não existe um período registrado para receber esta correção.";
+		return;
+	}
 	const referenceMonthlyState = currentMonthlyState
 		|| [...assetStates]
 			.reverse()

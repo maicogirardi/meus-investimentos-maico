@@ -95,7 +95,8 @@ A Home hoje:
 * mostra o card hero `Saldo total` com a soma do saldo atual no banco dos ativos visíveis
 * lista os ativos em cards operacionais
 * mostra `Total investido`, `Rendimento`, `Saldo atual no banco` e `Rendimento líquido diário`
-* permite registrar `Atualizar`, `Aporte`, `Saque` e `Saque extra`
+* permite registrar `Atualizar`, `Corrigir rendimento bruto`, `Aporte`, `Saque` e `Saque extra`
+* aceita rendimento bruto zerado na leitura atual e permite corrigir somente o bruto de uma competência existente, sem gerar rendimento líquido nem alterar o saldo atual
 * grava leituras em `dailyReadings`
 * grava aportes, saques normais e saques extras em `transactions`
 * atualiza `assetMonthlyStates` após cada ação

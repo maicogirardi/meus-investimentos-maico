@@ -3,6 +3,7 @@ import { getFirebaseDb } from "./firebase";
 
 const actionKinds = Object.freeze({
 	update: "update",
+	grossIncomeCorrection: "grossIncomeCorrection",
 	contribution: "contribution",
 	withdrawal: "withdrawal",
 	extraWithdrawal: "extraWithdrawal",
@@ -302,7 +303,7 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 		const periodDailyReadings = context?.periodDailyReadings || [];
 		const previousReadingsNetIncome = getDailyReadingsNetIncomeTotal(periodDailyReadings);
 
-		if (liquidBalance <= 0 || grossIncome <= 0) {
+		if (liquidBalance <= 0 || grossIncome < 0) {
 			throw new Error("Leitura diária inválida.");
 		}
 
@@ -325,6 +326,20 @@ export async function saveHomeAssetAction(uid, actionInput, context) {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
+	}
+
+	if (type === actionKinds.grossIncomeCorrection) {
+		const grossIncome = normalizeAmount(actionInput?.grossBalance);
+		if (!context?.currentMonthlyState || grossIncome < 0) {
+			throw new Error("Correção de rendimento bruto inválida.");
+		}
+
+		const grossIncomeDelta = normalizeAmount(grossIncome - nextMonthlyState.monthGrossIncome);
+		nextMonthlyState = {
+			...nextMonthlyState,
+			monthGrossIncome: grossIncome,
+			currentGrossBalance: normalizeAmount(Math.max(0, nextMonthlyState.currentGrossBalance + grossIncomeDelta)),
+		};
 	}
 
 	if (isTransactionActionType(type)) {

@@ -12,7 +12,8 @@ Hoje o projeto já tem:
 * listeners realtime para preferências, ativos, estados mensais, transações e leituras diárias
 * regras do Firestore isolando cada usuário no próprio namespace e validando os documentos principais do app
 * cadastro, edição e exclusão de ativos
-* ações de `Atualizar`, `Aporte`, `Saque` e `Saque extra` por ativo na Home
+* ações de `Atualizar`, `Corrigir rendimento bruto`, `Aporte`, `Saque` e `Saque extra` por ativo na Home
+* a atualização aceita rendimento bruto zerado enquanto o banco não fecha a competência; a correção substitui apenas o bruto de um período existente, sem alterar saldo ou rendimento líquido
 * importador da planilha REAL para o CDB Itaú 100% CDI
 * importação de rendimentos mensais, saques mensais e movimentações confirmadas da planilha
 * resumo com saldo anual, rendimentos, saques e movimentações paginadas

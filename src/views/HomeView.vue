@@ -43,6 +43,15 @@ const actionConfigMap = Object.freeze({
 		amountLabel: "",
 		amountPlaceholder: "",
 	},
+	grossIncomeCorrection: {
+		title: "Corrigir rendimento bruto",
+		description: "Substitui somente o rendimento bruto da competência escolhida, sem alterar o saldo atual ou o rendimento líquido.",
+		confirmLabel: "Corrigir",
+		noteLabel: "",
+		notePlaceholder: "",
+		amountLabel: "",
+		amountPlaceholder: "",
+	},
 	contribution: {
 		title: "Registrar aporte",
 		description: "Registre o valor aportado neste ativo.",
@@ -112,6 +121,7 @@ const actionModalState = reactive({
 });
 const actionForm = reactive({
 	date: "",
+	periodId: "",
 	note: "",
 	amount: 0,
 	liquidBalance: 0,
@@ -123,16 +133,21 @@ const grossBalanceInput = ref(formatCurrency(0));
 
 const currentActionConfig = computed(() => actionConfigMap[actionModalState.type] || null);
 const isUpdateAction = computed(() => actionModalState.type === "update");
+const isGrossIncomeCorrectionAction = computed(() => actionModalState.type === "grossIncomeCorrection");
+const shouldShowGrossIncomeField = computed(() => isUpdateAction.value || isGrossIncomeCorrectionAction.value);
 const shouldShowNoteField = computed(() => Boolean(currentActionConfig.value?.noteLabel));
 const shouldShowAmountField = computed(() => Boolean(currentActionConfig.value?.amountLabel));
-const isDateMissing = computed(() => shouldShowActionValidation.value && !actionForm.date);
+const isDateMissing = computed(() => shouldShowActionValidation.value && !isGrossIncomeCorrectionAction.value && !actionForm.date);
+const isPeriodMissing = computed(() => shouldShowActionValidation.value && isGrossIncomeCorrectionAction.value && !actionForm.periodId);
 const isNoteMissing = computed(() => shouldShowActionValidation.value && shouldShowNoteField.value && !actionForm.note.trim());
 const isAmountMissing = computed(() => shouldShowActionValidation.value && shouldShowAmountField.value && actionForm.amount <= 0);
 const isLiquidBalanceMissing = computed(() => shouldShowActionValidation.value && isUpdateAction.value && actionForm.liquidBalance <= 0);
-const isGrossBalanceMissing = computed(() => shouldShowActionValidation.value && isUpdateAction.value && actionForm.grossBalance <= 0);
+const isGrossBalanceMissing = computed(() => shouldShowActionValidation.value && shouldShowGrossIncomeField.value && actionForm.grossBalance < 0);
 const shouldReserveAmountErrorSpace = computed(() => shouldShowAmountField.value);
 const shouldReserveDateAmountErrorSpace = computed(() => isDateMissing.value || isAmountMissing.value);
-const actionPeriodLabel = computed(() => formatPeriodLabelFromDate(actionForm.date));
+const actionPeriodLabel = computed(() => isGrossIncomeCorrectionAction.value
+	? formatPeriodLabel(actionForm.periodId)
+	: formatPeriodLabelFromDate(actionForm.date));
 const calculatorPreviewText = computed(() => {
 	if (!calculatorExpression.value.trim()) {
 		return "Resultado: R$ 0,00";
@@ -221,6 +236,16 @@ function getAssetMonthlyState(assetId) {
 // Usa o valor mensal atual e cai no valor inicial quando necessário.
 function getAssetCapitalInvested(asset) {
 	return Number(getAssetMonthlyState(asset?.id)?.currentCapitalInvested ?? asset?.initialValue ?? 0);
+}
+
+function formatPeriodLabel(value) {
+	const normalized = String(value || "").trim();
+	if (!/^\d{4}-\d{2}$/.test(normalized)) {
+		return "--";
+	}
+
+	const [year, month] = normalized.split("-");
+	return `${month}/${year}`;
 }
 
 function getAssetReadingDate(asset) {
@@ -684,6 +709,7 @@ function handleCalculatorExpressionKeydown(event) {
 function resetActionForm() {
 	shouldShowActionValidation.value = false;
 	actionForm.date = getTodayDateInputValue();
+	actionForm.periodId = getTodayDateInputValue().slice(0, 7);
 	actionForm.note = "";
 	setCurrencyField("amount", 0);
 	setCurrencyField("liquidBalance", 0);
@@ -730,7 +756,7 @@ function closeActionModal() {
 
 // Valida os campos obrigatórios sem espalhar regra pelo template.
 function hasActionFormErrors() {
-	if (!actionForm.date) {
+	if (isGrossIncomeCorrectionAction.value ? !actionForm.periodId : !actionForm.date) {
 		return true;
 	}
 
@@ -742,7 +768,11 @@ function hasActionFormErrors() {
 		return true;
 	}
 
-	if (isUpdateAction.value && (actionForm.liquidBalance <= 0 || actionForm.grossBalance <= 0)) {
+	if (isUpdateAction.value && (actionForm.liquidBalance <= 0 || actionForm.grossBalance < 0)) {
+		return true;
+	}
+
+	if (isGrossIncomeCorrectionAction.value && actionForm.grossBalance < 0) {
 		return true;
 	}
 
@@ -762,6 +792,7 @@ function submitAction() {
 		type: actionModalState.type,
 		assetId: actionModalState.assetId,
 		date: actionForm.date,
+		periodId: isGrossIncomeCorrectionAction.value ? actionForm.periodId : "",
 		note: actionForm.note.trim(),
 		amount: actionForm.amount,
 		liquidBalance: actionForm.liquidBalance,
@@ -948,6 +979,21 @@ onBeforeUnmount(() => {
 						<button
 							type="button"
 							class="action-button action-button-secondary"
+							aria-label="Corrigir rendimento bruto"
+							title="Corrigir rendimento bruto"
+							:disabled="isSubmitting"
+							@click="openActionModal('grossIncomeCorrection', asset)"
+						>
+							<span class="action-button-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24" fill="none">
+									<path d="M4 19V12M10 19V8M16 19V4M3 19H21M18 7L21 4M21 4V8M21 4H17" />
+								</svg>
+							</span>
+							<span class="action-button-label">Corrigir bruto</span>
+						</button>
+						<button
+							type="button"
+							class="action-button action-button-secondary"
 							aria-label="Aporte"
 							title="Aporte"
 							:disabled="isSubmitting"
@@ -1092,7 +1138,7 @@ onBeforeUnmount(() => {
 				</div>
 
 				<div class="modal-grid">
-					<div class="field-group" :class="{ 'field-group-full': isUpdateAction }">
+					<div v-if="!isGrossIncomeCorrectionAction" class="field-group" :class="{ 'field-group-full': isUpdateAction }">
 						<label class="field-label" for="home-action-date">Data</label>
 						<input
 							id="home-action-date"
@@ -1130,7 +1176,18 @@ onBeforeUnmount(() => {
 						</div>
 					</div>
 
-					<div v-if="isUpdateAction" class="field-group">
+					<div v-if="isGrossIncomeCorrectionAction" class="field-group field-group-full">
+						<label class="field-label" for="home-action-period">Competência</label>
+						<input
+							id="home-action-period"
+							v-model="actionForm.periodId"
+							:class="['text-input', { 'required-empty': isPeriodMissing }]"
+							type="month"
+						/>
+						<div v-if="isPeriodMissing" class="error-text error-text-reserved">Informe a competência.</div>
+					</div>
+
+					<div v-if="shouldShowGrossIncomeField" class="field-group" :class="{ 'field-group-full': isGrossIncomeCorrectionAction }">
 						<label class="field-label" for="home-gross-balance">Rendimento bruto</label>
 						<input
 							id="home-gross-balance"
@@ -1148,7 +1205,7 @@ onBeforeUnmount(() => {
 							class="error-text error-text-reserved"
 							:class="{ 'is-hidden': !isGrossBalanceMissing }"
 						>
-							{{ isGrossBalanceMissing ? "Informe um rendimento bruto maior que zero." : " " }}
+							{{ isGrossBalanceMissing ? "O rendimento bruto não pode ser negativo." : " " }}
 						</div>
 					</div>
 
@@ -2229,17 +2286,17 @@ onBeforeUnmount(() => {
 	}
 
 	.asset-actions {
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
 		gap: 8px;
 	}
 
 	.action-button {
-		width: calc((100% - 24px) / 4);
+		width: calc((100% - 32px) / 5);
 		max-width: 60px;
 		min-width: 0;
-		flex: 0 1 calc((100% - 24px) / 4);
+		flex: 0 1 calc((100% - 32px) / 5);
 		aspect-ratio: 1;
 		padding: 0;
 		display: grid;
